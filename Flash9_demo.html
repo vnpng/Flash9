@@ -78,6 +78,13 @@
         .chat-bubble.mine { align-self: flex-end; background: var(--green); color: #fff; border-bottom-right-radius: 6px; }
         .chat-bubble.others { align-self: flex-start; background: #f2f2ed; color: var(--text); border-bottom-left-radius: 6px; }
         .chat-bubble.system { align-self: center; background: #fffbe6; color: #8a7a20; font-size: 12px; padding: 7px 14px; border-radius: 14px; max-width: 90%; text-align: center; font-weight: 600; border: 2px dashed #ffe9a0; }
+        .copy-btn { position: absolute; top: 50%; transform: translateY(-50%); width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid #ddd; background: #fff; cursor: pointer; font-size: 13px; line-height: 1; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.15s; z-index: 2; user-select: none; -webkit-user-select: none; padding: 0; }
+        .copy-btn:hover { border-color: var(--green-light); background: #faffe8; }
+        .copy-btn:active { transform: translateY(-50%) scale(0.9); }
+        .chat-bubble.mine .copy-btn { left: -34px; }
+        .chat-bubble.others .copy-btn { right: -34px; }
+        .chat-bubble.show-copy .copy-btn { opacity: 1; }
+        @media (hover: hover) { .chat-bubble:hover .copy-btn { opacity: 1; } }
         .chat-sender { font-size: 11px; font-weight: 700; margin-bottom: 2px; letter-spacing: 0.3px; }
         .chat-empty { text-align: center; color: #ccc; padding: 30px; font-size: 13px; user-select: none; }
         .file-bubble { display: flex; flex-direction: column; gap: 4px; }
@@ -641,16 +648,19 @@
         const blob = new Blob(arr, { type: meta.fileType || 'application/octet-stream' });
         const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = meta.fileName;
         document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-        const bubble = document.getElementById('file-bubble-' + transferId); if (bubble) { const btn = bubble.querySelector('button'); if (btn) btn.textContent = '📥 再次下载'; }
+        const bubble = document.getElementById('file-bubble-' + transferId); if (bubble) { const btn = bubble.querySelector('.btn-primary.btn-xs'); if (btn) btn.textContent = '📥 再次下载'; }
     };
 
     // ==================== 聊天 ====================
     function addChatBubble(text, type, senderName, senderColor, timestamp) {
         const ce = document.getElementById('chatEmpty') || window._chatEmptyRef; if (ce && ce.id === 'chatEmpty') ce.classList.add('hidden');
         const b = document.createElement('div'); b.className = 'chat-bubble ' + type;
-        let c = ''; if (type === 'others' && senderName) c += '<div class="chat-sender" style="color:' + (senderColor||'#999') + '">👤 ' + escapeHtml(senderName) + '</div>';
-        c += escapeHtml(text); c += '<div class="chat-time">' + formatMsgTime(timestamp || Date.now()) + '</div>';
-        b.innerHTML = c; chatArea.appendChild(b); chatArea.scrollTop = chatArea.scrollHeight;
+        let inner = ''; if (type === 'others' && senderName) inner += '<div class="chat-sender" style="color:' + (senderColor||'#999') + '">👤 ' + escapeHtml(senderName) + '</div>';
+        inner += escapeHtml(text); inner += '<div class="chat-time">' + formatMsgTime(timestamp || Date.now()) + '</div>';
+        if (type !== 'system') inner += '<button class="copy-btn" title="复制">📋</button>';
+        b.innerHTML = inner; b._copyText = text;
+        if (type !== 'system') setupBubbleCopy(b);
+        chatArea.appendChild(b); chatArea.scrollTop = chatArea.scrollHeight;
     }
     function addSystemMessage(text, timestamp) {
         const ce = document.getElementById('chatEmpty') || window._chatEmptyRef; if (ce && ce.id === 'chatEmpty') ce.classList.add('hidden');
@@ -684,7 +694,10 @@
         let inner = '';
         if (!isMine && senderName) inner += '<div class="chat-sender" style="color:' + (senderColor || '#999') + '">👤 ' + escapeHtml(senderName) + '</div>';
         inner += '<div class="file-bubble"><div class="file-bubble-name">' + (isMine ? '📤 ' : '📥 ') + escapeHtml(fileName) + '</div><div class="file-bubble-meta"><span class="file-bubble-size">' + formatFileSize(fileSize) + '</span><span class="file-bubble-status" id="file-status-' + tid + '">0%</span></div><div class="chat-time">' + formatMsgTime(Date.now()) + '</div></div>';
-        b.innerHTML = inner; chatArea.appendChild(b); chatArea.scrollTop = chatArea.scrollHeight; return b;
+        inner += '<button class="copy-btn" title="复制">📋</button>';
+        b.innerHTML = inner; b._copyText = fileName;
+        setupBubbleCopy(b);
+        chatArea.appendChild(b); chatArea.scrollTop = chatArea.scrollHeight; return b;
     }
     function sendToAll(chunk) {
         for (const [, dc] of Object.entries(appState.dataChannels)) {
@@ -722,8 +735,32 @@
     }
     function updateFileProgress(tid, bytes, total, isSend) { const el = document.getElementById('file-status-' + tid); if (el) el.textContent = Math.round(bytes / total * 100) + '%'; }
     function markFileComplete(tid) { const el = document.getElementById('file-status-' + tid); if (el) el.textContent = '✅ 上传成功'; }
-    function showDownloadButton(tid) { const el = document.getElementById('file-status-' + tid); if (el) el.innerHTML = '<button class="btn btn-primary btn-xs" style="margin-top:-2px;" onclick="window._flash9DownloadFile(\'' + tid + '\')">📥 下载文件</button>'; }
+    function showDownloadButton(tid) { const el = document.getElementById('file-status-' + tid); if (el) { el.textContent = '✅ 上传成功'; const fb = el.closest('.file-bubble'); if (fb) { const btn = document.createElement('button'); btn.className = 'btn btn-primary btn-xs'; btn.textContent = '📥 下载文件'; btn.style.cssText = 'margin-top:4px;align-self:flex-start;'; btn.onclick = function() { window._flash9DownloadFile(tid); }; fb.appendChild(btn); } } }
     function formatFileSize(b) { if (b < 1024) return b + ' B'; if (b < 1048576) return (b / 1024).toFixed(1) + ' KB'; return (b / 1048576).toFixed(1) + ' MB'; }
+
+    // ==================== 复制按钮 ====================
+    function setupBubbleCopy(bubble) {
+        bubble.addEventListener('click', function(e) {
+            if (e.target.closest('.copy-btn')) {
+                const text = bubble._copyText || '';
+                copyToClipboard(text).then(() => {
+                    const btn = bubble.querySelector('.copy-btn');
+                    if (btn) { btn.textContent = '✅'; setTimeout(() => btn.textContent = '📋', 1000); }
+                }).catch(() => {});
+                return;
+            }
+            if (e.target.closest('button')) return;
+            const wasActive = bubble.classList.contains('show-copy');
+            document.querySelectorAll('.chat-bubble.show-copy').forEach(b => b.classList.remove('show-copy'));
+            if (!wasActive) bubble.classList.add('show-copy');
+            e.stopPropagation();
+        });
+    }
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.chat-bubble')) {
+            document.querySelectorAll('.chat-bubble.show-copy').forEach(b => b.classList.remove('show-copy'));
+        }
+    });
 
     // ==================== 房间销毁 ====================
     function destroyRoom(isAuto) { if (appState.destroyed) return; appState.destroyed = true; addSystemMessage(isAuto ? '⏰ 自毁时间到，房间自动销毁' : '💣 房间已被手动销毁'); sendWS({ type: 'room-destroyed', roomCode: appState.roomCode }); setTimeout(() => showDestroyedModal(), 600); cleanupAll(); }
