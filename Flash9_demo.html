@@ -679,6 +679,8 @@
         return true;
     }
     async function sendFile(file) {
+        const MAX_SIZE = 9 * 1024 * 1024;
+        if (file.size > MAX_SIZE) { addSystemMessage('❌ 文件 "' + file.name + '" 超过 9MB 限制，无法发送'); return; }
         const tid = 'ft-' + Date.now() + '-' + Math.random().toString(36).substring(2,6); const total = Math.ceil(file.size / CHUNK_SIZE);
         sendWS({ type: 'file-meta', transferId: tid, fileName: file.name, fileSize: file.size, fileType: file.type || 'application/octet-stream', totalChunks: total, senderId: appState.selfId });
         addFileBubble(tid, file.name, file.size, 'send');

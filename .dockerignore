@@ -1,0 +1,12 @@
+node_modules
+.git
+temp
+Flash9开发日志.md
+.deepseek
+.vscode
+.idea
+*.pyc
+__pycache__
+Dockerfile
+docker-compose.yml
+.dockerignore

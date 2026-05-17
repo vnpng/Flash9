@@ -1,0 +1,9 @@
+services:
+  flash9:
+    build: .
+    container_name: flash9
+    ports:
+      - "5017:8080"
+    environment:
+      - TZ=Asia/Shanghai
+    restart: unless-stopped
