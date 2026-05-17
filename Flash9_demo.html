@@ -430,9 +430,22 @@
         if (appState.timerInterval) clearInterval(appState.timerInterval);
         appState.timerInterval = setInterval(() => { updateTimerDisplay(); if (appState.destroyTimestamp && Date.now() >= appState.destroyTimestamp) { if (appState.isHost && !appState.destroyed) destroyRoom(true); } }, 1000);
     }
+    function copyToClipboard(text) {
+        if ((location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1') && navigator.clipboard && navigator.clipboard.writeText) {
+            return navigator.clipboard.writeText(text);
+        }
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch(e) {}
+        document.body.removeChild(ta);
+        return Promise.resolve();
+    }
     roomCodeBadge.addEventListener('click', () => {
         if (!appState.roomCode) return;
-        navigator.clipboard.writeText(appState.roomCode).then(() => { roomCodeBadge.textContent = '已复制!'; setTimeout(() => roomCodeBadge.textContent = appState.roomCode, 1500); }).catch(()=>{});
+        copyToClipboard(appState.roomCode).then(() => { roomCodeBadge.textContent = '已复制!'; setTimeout(() => roomCodeBadge.textContent = appState.roomCode, 1500); }).catch(()=>{});
     });
 
     // ==================== WS 消息处理 ====================
@@ -744,7 +757,7 @@
     document.addEventListener('keydown', (e) => {
         if (appState.view !== 'room') return;
         if (e.key === 'Escape') { if (shortcutPopup && !shortcutPopup.classList.contains('hidden')) { shortcutPopup.classList.add('hidden'); return; } if (modalDestroyConfirm && !modalDestroyConfirm.classList.contains('hidden')) { modalDestroyConfirm.classList.add('hidden'); return; } if (modalDestroyed && !modalDestroyed.classList.contains('hidden')) { modalDestroyed.classList.add('hidden'); resetAll(); showView('home'); return; } }
-        if (e.ctrlKey && e.key === 'c' && !e.target.closest('textarea, input')) { if (appState.roomCode) { navigator.clipboard.writeText(appState.roomCode).catch(()=>{}); roomCodeBadge.textContent = '已复制!'; setTimeout(() => roomCodeBadge.textContent = appState.roomCode, 1500); } }
+        if (e.ctrlKey && e.key === 'c' && !e.target.closest('textarea, input')) { if (appState.roomCode) { copyToClipboard(appState.roomCode).catch(()=>{}); roomCodeBadge.textContent = '已复制!'; setTimeout(() => roomCodeBadge.textContent = appState.roomCode, 1500); } }
         if (e.key === 'ArrowUp' && document.activeElement === msgInput && !msgInput.value) { if (_lastMessage) { msgInput.value = _lastMessage; autoResizeTextarea(); setTimeout(() => { msgInput.selectionStart = msgInput.selectionEnd = msgInput.value.length; }, 0); } }
     });
     btnShortcutHelp.addEventListener('click', (e) => { e.stopPropagation(); shortcutPopup.classList.toggle('hidden'); });
