@@ -262,7 +262,8 @@
     function generateRandomNickname() { return RANDOM_NICKNAMES[Math.floor(Math.random()*RANDOM_NICKNAMES.length)]; }
     function escapeHtml(s) { const d=document.createElement('div');d.textContent=s;return d.innerHTML.replace(/\n/g,'<br>'); }
     function sleep(ms) { return new Promise(r=>setTimeout(r,ms)); }
-    function getOnlineCount() { return Object.keys(appState.dataChannels).filter(pid=>appState.dataChannels[pid].readyState==='open').length+1; }
+    function getOnlineCount() { return appState._serverOnlineCount || 1; }
+    function handleMemberUpdate(msg) { appState._serverOnlineCount = msg.count || 1; updateOnlineCount(); }
     function sendWS(msg) { if(appState._ws&&appState._ws.readyState===1)appState._ws.send(JSON.stringify(msg)); }
 
     function showView(name) {
@@ -469,6 +470,7 @@
             case 'mesh-answer': handleMeshAnswer(msg); break;
             case 'reconnect-request': handleReconnectRequest(msg); break;
             case 'peer-leave': handlePeerLeave(msg); break;
+            case 'member-update': handleMemberUpdate(msg); break;
             default: handleStructuredMessage(msg, msg.from); break;
         }
     }
@@ -657,13 +659,11 @@
         chatArea.appendChild(b); chatArea.scrollTop = chatArea.scrollHeight;
     }
     let _lastMessage = '';
-    function sendMessage(text) { if (!text.trim()) return; _lastMessage = text.trim(); const ts = Date.now(); addChatBubble(text.trim(), 'mine', null, null, ts); broadcastToAllPeers(JSON.stringify({ type: 'chat', text: text.trim(), senderId: appState.selfId, timestamp: ts })); }
+    function sendMessage(text) { if (!text.trim()) return; _lastMessage = text.trim(); const ts = Date.now(); addChatBubble(text.trim(), 'mine', null, null, ts); sendWS({ type: 'chat', text: text.trim(), timestamp: ts }); }
     btnSendMsg.addEventListener('click', () => { sendMessage(msgInput.value); msgInput.value = ''; autoResizeTextarea(); });
     msgInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(msgInput.value); msgInput.value = ''; autoResizeTextarea(); } });
     msgInput.addEventListener('input', autoResizeTextarea);
     function autoResizeTextarea() { msgInput.style.height = 'auto'; msgInput.style.height = Math.min(msgInput.scrollHeight, 120) + 'px'; }
-    function broadcastToAllPeers(data, maxBuffer) { for (const [, dc] of Object.entries(appState.dataChannels)) { if (dc.readyState === 'open') { if (maxBuffer && dc.bufferedAmount > maxBuffer) return false; try { dc.send(data); } catch (err) { return false; } } } return true; }
-
     // ==================== 粘贴 + 文件拖拽 ====================
     document.addEventListener('paste', (e) => {
         if (appState.view !== 'room') return;
@@ -751,7 +751,7 @@
     function startReconnect(peerId, attempt) { if (appState.destroyed || appState._reconnectTimers[peerId]) return; const delay = Math.min(1000 * Math.pow(2, attempt - 1), 30000); const info = appState.peerInfo[peerId]; if (!info) { cleanupPeer(peerId); return; } appState._reconnectTimers[peerId] = setTimeout(() => { delete appState._reconnectTimers[peerId]; if (appState.destroyed) { cleanupPeer(peerId); return; } sendWS({ type: 'reconnect-request', to: peerId, roomCode: appState.roomCode, nickname: appState.nickname, color: appState.myColor }); doReconnect(peerId, info.nickname, info.color); const timeout = setTimeout(() => { startReconnect(peerId, attempt + 1); }, 5000); appState._reconnectTimers[peerId + '_timeout'] = timeout; }, delay); }
     async function doReconnect(peerId, peerNickname, peerColor) { if (appState.peerConnections[peerId]) return; const pc = new RTCPeerConnection(STUN_SERVERS); appState.peerConnections[peerId] = pc; const dc = pc.createDataChannel('flash9-chat', { ordered: true }); setupDataChannel(dc, peerId, true); appState.dataChannels[peerId] = dc; pc.onicecandidate = (event) => { if (event.candidate) { const c = event.candidate; sendWS({ type: 'ice-candidate', to: peerId, roomCode: appState.roomCode, candidate: { candidate: c.candidate, sdpMid: c.sdpMid, sdpMLineIndex: c.sdpMLineIndex } }); } }; pc.oniceconnectionstatechange = () => {}; try { const offer = await pc.createOffer(); await pc.setLocalDescription(offer); sendWS({ type: 'offer', to: peerId, roomCode: appState.roomCode, sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp }, hostNickname: appState.nickname, hostColor: appState.myColor }); } catch (err) { cleanupPeer(peerId); } }
     function cleanupAll() { if (appState.timerInterval) { clearInterval(appState.timerInterval); appState.timerInterval = null; } for (const pid of Object.keys(appState.peerConnections)) cleanupPeer(pid); if (appState._ws) { appState._ws.close(); appState._ws = null; } updateConnDot(); appState.fileReceiveBuffers = {}; for (const k in _earlyChunks) delete _earlyChunks[k]; chatArea.innerHTML = '<div class="chat-empty" id="chatEmpty">📭 还没人说话，发条消息吧~</div>'; window._chatEmptyRef = chatArea.querySelector('.chat-empty'); btnDestroyRoom.classList.add('hidden'); btnExitRoom.classList.add('hidden'); onlineCountEl.textContent = '0'; }
-    function resetAll() { cleanupAll(); appState.isHost = false; appState.roomCode = null; appState.selfId = null; appState.destroyTimestamp = null; appState.destroyHours = 1; appState.peerConnections = {}; appState.dataChannels = {}; appState.destroyed = false; appState.fileReceiveBuffers = {}; appState.nickname = null; appState.myColor = null; appState.peerInfo = {}; appState._pending = null; appState._reconnectTimers = {}; if (appState._joinTimeout) { clearTimeout(appState._joinTimeout); appState._joinTimeout = null; } if (appState.timerInterval) { clearInterval(appState.timerInterval); appState.timerInterval = null; } modalDestroyed.classList.add('hidden'); modalDestroyConfirm.classList.add('hidden'); modalNickname.classList.add('hidden'); modalJoining.classList.add('hidden'); timerBadge.classList.remove('urgent'); timerBadge.textContent = '⏳ --:--:--'; roomCodeBadge.textContent = '----'; onlineCountEl.textContent = '0'; connDot.classList.add('disconnected'); myNicknameLabel.textContent = ''; chatArea.innerHTML = '<div class="chat-empty" id="chatEmpty">📭 还没人说话，发条消息吧~</div>'; window._chatEmptyRef = chatArea.querySelector('.chat-empty'); joinCodeInput.value = ''; joinCodeInput.placeholder = '输入 4 位房间码'; }
+    function resetAll() { cleanupAll(); appState.isHost = false; appState.roomCode = null; appState.selfId = null; appState.destroyTimestamp = null; appState.destroyHours = 1; appState.peerConnections = {}; appState.dataChannels = {}; appState.destroyed = false; appState.fileReceiveBuffers = {}; appState.nickname = null; appState.myColor = null; appState.peerInfo = {}; appState._pending = null; appState._reconnectTimers = {}; appState._serverOnlineCount = null; if (appState._joinTimeout) { clearTimeout(appState._joinTimeout); appState._joinTimeout = null; } if (appState.timerInterval) { clearInterval(appState.timerInterval); appState.timerInterval = null; } modalDestroyed.classList.add('hidden'); modalDestroyConfirm.classList.add('hidden'); modalNickname.classList.add('hidden'); modalJoining.classList.add('hidden'); timerBadge.classList.remove('urgent'); timerBadge.textContent = '⏳ --:--:--'; roomCodeBadge.textContent = '----'; onlineCountEl.textContent = '0'; connDot.classList.add('disconnected'); myNicknameLabel.textContent = ''; chatArea.innerHTML = '<div class="chat-empty" id="chatEmpty">📭 还没人说话，发条消息吧~</div>'; window._chatEmptyRef = chatArea.querySelector('.chat-empty'); joinCodeInput.value = ''; joinCodeInput.placeholder = '输入 4 位房间码'; }
 
     // ==================== 快捷键 ====================
     document.addEventListener('keydown', (e) => {

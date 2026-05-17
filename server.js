@@ -1,5 +1,10 @@
 // Flash9 信令服务器 — WebSocket + 静态文件
 const http = require('http');
+
+function broadcastMemberUpdate(room) {
+    const msg = JSON.stringify({ type: 'member-update', count: room.members.size });
+    for (const member of room.members) { if (member.readyState === 1) member.send(msg); }
+}
 const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
@@ -78,6 +83,7 @@ wss.on('connection', (ws) => {
                 clients.set(ws, { roomCode, peerId, nickname, color });
                 console.log(`👤 ${nickname} 加入房间: ${roomCode}`);
                 ws.send(JSON.stringify({ type: 'register-ok', roomCode, destroyTimestamp: room.destroyTimestamp }));
+                broadcastMemberUpdate(room);
                 return;
             }
 
@@ -136,6 +142,7 @@ wss.on('connection', (ws) => {
             room.members.delete(ws);
             console.log(`👋 ${client.nickname || client.peerId} 离开: ${client.roomCode}`);
             if (room.members.size === 0) { rooms.delete(client.roomCode); }
+            else { broadcastMemberUpdate(room); }
         }
         clients.delete(ws);
     });
