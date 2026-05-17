@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Flash9 - 极简临时传信</title>
+    <style>
+        :root {
+            --green: #58CC02; --green-dark: #46A302; --green-light: #8FDF4A;
+            --yellow: #FFC800; --orange: #FF9600; --blue: #1CB0F6; --red: #FF4B4B;
+            --bg: #FFFEF9; --card: #FFFFFF; --text: #3C3C3C; --text-light: #777777;
+            --shadow-sm: 0 2px 8px rgba(0,0,0,0.08); --shadow-md: 0 6px 24px rgba(0,0,0,0.12);
+            --shadow-lg: 0 12px 40px rgba(0,0,0,0.16); --shadow-green: 0 6px 20px rgba(88,204,2,0.35);
+            --radius-sm: 12px; --radius-md: 18px; --radius-lg: 24px; --radius-xl: 32px;
+            --font: 'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans SC',system-ui,-apple-system,sans-serif;
+            --transition: 0.2s cubic-bezier(0.34,1.56,0.64,1);
+            --bounce: 0.35s cubic-bezier(0.34,1.56,0.64,1);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: var(--font); background: var(--bg); min-height: 100vh;
+            display: flex; align-items: center; justify-content: center;
+            background-image: radial-gradient(ellipse at 20% 20%, rgba(88,204,2,0.06) 0%, transparent 55%),
+                radial-gradient(ellipse at 80% 75%, rgba(255,200,0,0.07) 0%, transparent 55%),
+                radial-gradient(ellipse at 50% 50%, rgba(28,176,246,0.04) 0%, transparent 60%);
+            padding: 16px; -webkit-tap-highlight-color: transparent; -webkit-font-smoothing: antialiased;
+        }
+        .app-container { width: 100%; max-width: 460px; position: relative; }
+        .card {
+            background: var(--card); border-radius: var(--radius-xl); padding: 28px 24px;
+            box-shadow: var(--shadow-lg); transition: all var(--transition);
+            position: relative; overflow: hidden; border: 3px solid #f0f0e8;
+        }
+        .card::before { content: ''; position: absolute; top: -30px; right: -30px; width: 80px; height: 80px; background: var(--yellow); border-radius: 50%; opacity: 0.25; pointer-events: none; z-index: 0; }
+        .mascot { display: block; text-align: center; font-size: 56px; animation: mascotFloat 2.8s ease-in-out infinite; filter: drop-shadow(0 6px 12px rgba(255,200,0,0.45)); cursor: default; user-select: none; z-index: 1; position: relative; line-height: 1; }
+        @keyframes mascotFloat { 0%,100% { transform: translateY(0) rotate(-2deg); } 30% { transform: translateY(-14px) rotate(3deg); } 55% { transform: translateY(-6px) rotate(-1deg); } 75% { transform: translateY(-18px) rotate(4deg); } }
+        .logo-title { text-align: center; font-size: 38px; font-weight: 900; letter-spacing: -0.5px; color: var(--green); z-index: 1; position: relative; text-shadow: 2px 3px 0 rgba(88,204,2,0.2); margin: 4px 0 2px; user-select: none; }
+        .subtitle { text-align: center; font-size: 13px; color: var(--text-light); margin-bottom: 20px; z-index: 1; position: relative; letter-spacing: 0.5px; }
+        .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 15px 28px; font-size: 17px; font-weight: 700; font-family: var(--font); border: none; border-radius: 999px; cursor: pointer; letter-spacing: 0.3px; transition: all var(--bounce); position: relative; outline: none; user-select: none; -webkit-user-select: none; box-shadow: var(--shadow-sm); text-decoration: none; white-space: nowrap; }
+        .btn:active { transform: scale(0.92); transition: transform 0.08s ease; }
+        .btn-primary { background: var(--green); color: #fff; box-shadow: var(--shadow-green); font-size: 18px; padding: 16px 34px; }
+        .btn-primary:hover { background: var(--green-dark); transform: translateY(-3px); box-shadow: 0 10px 28px rgba(88,204,2,0.45); }
+        .btn-primary:active { transform: scale(0.9); box-shadow: 0 4px 12px rgba(88,204,2,0.3); }
+        .btn-secondary { background: #fff; color: var(--green); border: 3px solid var(--green); font-size: 18px; padding: 16px 34px; }
+        .btn-secondary:hover { background: #f6ffe8; transform: translateY(-3px); box-shadow: 0 8px 22px rgba(88,204,2,0.25); }
+        .btn-danger { background: var(--red); color: #fff; font-weight: 700; box-shadow: 0 6px 18px rgba(255,75,75,0.35); animation: pulseDanger 2.2s ease-in-out infinite; }
+        @keyframes pulseDanger { 0%,100% { box-shadow: 0 6px 18px rgba(255,75,75,0.35); } 50% { box-shadow: 0 10px 30px rgba(255,75,75,0.6); } }
+        .btn-danger:hover { background: #e03030; transform: translateY(-3px); }
+        .btn-sm { padding: 10px 18px; font-size: 14px; border-radius: 999px; }
+        .btn-block { display: flex; width: 100%; }
+        .btn-xs { padding: 8px 14px; font-size: 13px; border-radius: 999px; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; filter: grayscale(20%); }
+        .input-group { display: flex; gap: 10px; align-items: center; z-index: 1; position: relative; }
+        .input { flex: 1; padding: 14px 18px; font-size: 16px; font-family: var(--font); border: 3px solid #e8e6dc; border-radius: 999px; background: #fdfdfb; outline: none; transition: all var(--transition); letter-spacing: 0.5px; text-align: center; font-weight: 600; color: var(--text); }
+        .input:focus { border-color: var(--green); box-shadow: 0 0 0 6px rgba(88,204,2,0.1); background: #fff; }
+        .input.shake { animation: shake 0.5s ease; }
+        @keyframes shake { 0%,100% { transform: translateX(0); } 15% { transform: translateX(-8px); } 30% { transform: translateX(8px); } 45% { transform: translateX(-6px); } 60% { transform: translateX(5px); } 75% { transform: translateX(-3px); } 90% { transform: translateX(2px); } }
+        .time-selector { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; z-index: 1; position: relative; }
+        .time-chip { padding: 12px 20px; border-radius: 999px; border: 3px solid #e8e6dc; background: #fff; cursor: pointer; font-weight: 700; font-family: var(--font); font-size: 15px; transition: all var(--bounce); user-select: none; color: var(--text); letter-spacing: 0.3px; }
+        .time-chip:hover { border-color: var(--green-light); background: #faffe8; transform: translateY(-2px); }
+        .time-chip.selected { background: var(--green); color: #fff; border-color: var(--green); box-shadow: var(--shadow-green); transform: scale(1.05); }
+        .time-chip:active { transform: scale(0.9); }
+        .room-top-bar { display: flex; align-items: center; justify-content: space-between; z-index: 1; position: relative; padding: 4px 0 8px; gap: 8px; }
+        .room-code-badge { display: inline-flex; align-items: center; gap: 6px; background: #f6ffe8; border-radius: 999px; padding: 8px 14px; font-weight: 700; font-size: 14px; color: var(--green); border: 2px solid var(--green-light); letter-spacing: 2px; font-family: 'SF Mono','Cascadia Code','Consolas',monospace; cursor: pointer; transition: all var(--transition); }
+        .room-code-badge:hover { background: #e6ffd0; transform: scale(1.03); }
+        .room-code-badge:active { transform: scale(0.95); }
+        .timer-badge { display: inline-flex; align-items: center; gap: 5px; background: #fff; border-radius: 999px; padding: 8px 14px; font-weight: 700; font-size: 14px; color: var(--text); border: 2px solid #e8e6dc; letter-spacing: 0.5px; font-variant-numeric: tabular-nums; font-family: 'SF Mono','Cascadia Code','Consolas',monospace; }
+        .timer-badge.urgent { color: var(--red); border-color: #ffcccc; background: #fff5f5; animation: urgentBlink 0.7s ease-in-out infinite; }
+        @keyframes urgentBlink { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .conn-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; background: var(--green); animation: dotPulse 1.5s ease-in-out infinite; }
+        .conn-dot.disconnected { background: #FF4B4B; animation: none; }
+        .online-badge { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; font-size: 13px; color: var(--text-light); z-index: 1; position: relative; }
+        .online-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--green); display: inline-block; animation: dotPulse 1.5s ease-in-out infinite; }
+        @keyframes dotPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(88,204,2,0.5); } 50% { box-shadow: 0 0 0 8px rgba(88,204,2,0); } }
+        #viewRoom.card { max-width: 600px; height: 800px; display: flex; flex-direction: column; }
+        .chat-area { flex: 1; overflow-y: auto; padding: 8px 4px; display: flex; flex-direction: column; gap: 8px; z-index: 1; position: relative; scroll-behavior: smooth; }
+        .chat-bubble { padding: 10px 16px; border-radius: 20px; max-width: 82%; word-break: break-word; font-size: 14px; line-height: 1.5; position: relative; box-shadow: var(--shadow-sm); }
+        .chat-bubble.mine { align-self: flex-end; background: var(--green); color: #fff; border-bottom-right-radius: 6px; }
+        .chat-bubble.others { align-self: flex-start; background: #f2f2ed; color: var(--text); border-bottom-left-radius: 6px; }
+        .chat-bubble.system { align-self: center; background: #fffbe6; color: #8a7a20; font-size: 12px; padding: 7px 14px; border-radius: 14px; max-width: 90%; text-align: center; font-weight: 600; border: 2px dashed #ffe9a0; }
+        .chat-sender { font-size: 11px; font-weight: 700; margin-bottom: 2px; letter-spacing: 0.3px; }
+        .chat-empty { text-align: center; color: #ccc; padding: 30px; font-size: 13px; user-select: none; }
+        .file-bubble { display: flex; flex-direction: column; gap: 4px; }
+        .file-bubble-name { font-weight: 700; font-size: 13px; word-break: break-all; }
+        .file-bubble-meta { display: flex; align-items: center; gap: 10px; font-size: 11px; }
+        .file-bubble-size { opacity: 0.7; }
+        .file-bubble-status { font-weight: 700; }
+        .chat-time { font-size: 10px; margin-top: 4px; opacity: 0.65; }
+        .chat-bubble.mine .chat-time { text-align: right; color: rgba(255,255,255,0.75); }
+        .chat-bubble.others .chat-time { text-align: right; color: #aaa; }
+        .chat-bubble.system .chat-time { text-align: center; color: #bba860; }
+        .msg-input-area { position: relative; z-index: 1; border: 3px solid #e8e6dc; border-radius: var(--radius-lg); background: #fdfdfb; transition: all var(--transition); }
+        .msg-input-area:focus-within { border-color: var(--green); box-shadow: 0 0 0 6px rgba(88,204,2,0.1); background: #fff; }
+        .msg-input-area.drag-over { border-color: var(--green); background: #f6ffe8; box-shadow: 0 0 0 8px rgba(88,204,2,0.06); }
+        .msg-textarea { display: block; width: 100%; min-height: 50px; max-height: 120px; padding: 14px 86px 14px 16px; font-size: 15px; font-family: var(--font); border: none; border-radius: var(--radius-lg); background: transparent; outline: none; resize: none; color: var(--text); line-height: 1.4; letter-spacing: 0.3px; }
+        .msg-textarea::placeholder { color: #bbb; }
+        .msg-textarea { scrollbar-width: none; }
+        .msg-textarea::-webkit-scrollbar { display: none; }
+        .input-btn-row { position: absolute; right: 8px; bottom: 8px; display: flex; gap: 6px; z-index: 2; }
+        .btn-icon-circle { width: 34px; height: 34px; border-radius: 50%; background: #fff; color: var(--text); border: 2px solid #e8e6dc; font-size: 18px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: all var(--transition); line-height: 0; }
+        .btn-icon-circle:hover { border-color: var(--green-light); background: #faffe8; color: var(--green); }
+        .btn-icon-circle:active { transform: scale(0.92); }
+        .room-bottom-bar { display: flex; gap: 8px; align-items: center; z-index: 1; position: relative; }
+        .room-bottom-bar .room-code-badge { flex: 0 0 auto; cursor: pointer; }
+        .room-bottom-bar .btn-danger { padding: 8px 16px; font-size: 13px; flex: 0 0 auto; margin: 0 auto; height: 38.67px; line-height: 1.2; display: inline-flex; align-items: center; box-shadow: none; animation: none; }
+        .btn-exit { background: var(--yellow); color: #fff; font-weight: 700; }
+        .btn-exit:hover { background: #e6b400; }
+        .room-bottom-bar .btn-exit { padding: 8px 16px; font-size: 13px; flex: 0 0 auto; margin: 0 auto; height: 38.67px; line-height: 1.2; display: inline-flex; align-items: center; box-shadow: none; }
+        .shortcut-popup { position: absolute; right: 0; bottom: 110%; background: #fff; border-radius: var(--radius-md); padding: 12px 16px; box-shadow: var(--shadow-lg); border: 2px solid #f0f0e8; display: flex; flex-direction: column; gap: 6px; z-index: 50; min-width: 200px; animation: fadeIn 0.15s ease; }
+        .shortcut-item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); white-space: nowrap; }
+        kbd { display: inline-block; padding: 2px 7px; font-size: 11px; font-family: 'SF Mono',Consolas,monospace; background: #f2f2ed; border-radius: 5px; border: 1px solid #d8d6cc; color: var(--text); min-width: 24px; text-align: center; }
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 100; display: flex; align-items: center; justify-content: center; animation: fadeIn 0.2s ease; padding: 16px; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .modal-card { background: #fff; border-radius: var(--radius-xl); padding: 24px 20px; max-width: 400px; width: 100%; text-align: center; box-shadow: var(--shadow-lg); border: 3px solid #f0f0e8; }
+        .modal-title { font-size: 22px; font-weight: 900; margin-bottom: 8px; color: var(--text); }
+        .modal-text { font-size: 14px; color: var(--text-light); margin-bottom: 18px; line-height: 1.6; }
+        .modal-buttons { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+        .nickname-input { text-align: left !important; }
+        .nickname-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+        .nickname-chip { padding: 8px 14px; border-radius: 999px; border: 2px solid #e8e6dc; background: #fff; cursor: pointer; font-weight: 600; font-family: var(--font); font-size: 13px; transition: all var(--bounce); user-select: none; color: var(--text); letter-spacing: 0.3px; }
+        .nickname-chip:hover { border-color: var(--green-light); background: #faffe8; transform: translateY(-2px); }
+        .nickname-chip:active { transform: scale(0.92); }
+        .hidden { display: none !important; }
+        .mt-8 { margin-top: 8px; } .mt-12 { margin-top: 12px; } .mt-16 { margin-top: 16px; }
+        @media (max-width: 420px) { .card { padding: 20px 14px; border-radius: var(--radius-lg); } .btn { padding: 13px 20px; font-size: 15px; } .btn-primary,.btn-secondary { font-size: 16px; padding: 14px 24px; } .logo-title { font-size: 30px; } .mascot { font-size: 42px; } .chat-area { max-height: 180px; } .time-chip { padding: 10px 14px; font-size: 13px; } }
+    </style>
+</head>
+<body>
+<div class="app-container" id="appContainer">
+    <div class="card" id="viewHome">
+        <span class="mascot">⚡</span>
+        <div class="logo-title">Flash9</div>
+        <p class="subtitle">极简 · 临时 · 即焚传信</p>
+        <button class="btn btn-primary btn-block mt-12" id="btnShowCreate">✨ 创建房间</button>
+        <div class="mt-16" style="text-align:center;color:#ccc;font-weight:700;font-size:13px;">— 或 —</div>
+        <div class="input-group mt-12">
+            <input type="text" class="input" id="joinCodeInput" placeholder="输入 4 位房间码" maxlength="4" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false">
+            <button class="btn btn-secondary btn-sm" id="btnJoinRoom" style="flex-shrink:0;height:54.67px;">加入房间</button>
+        </div>
+        <p style="text-align:center;font-size:11px;color:#bbb;margin-top:10px;" id="hintSameDevice">⚡ 极简 · 临时 · 即焚</p>
+    </div>
+    <div class="card hidden" id="viewCreate">
+        <span class="mascot">⚡</span>
+        <div class="logo-title" style="font-size:26px;">创建房间</div>
+        <p class="subtitle">选择房间自毁时间（必选）</p>
+        <div class="time-selector mt-12" id="timeSelector">
+            <button class="time-chip selected" data-hours="1">🕐 1 小时</button>
+            <button class="time-chip" data-hours="2">🕑 2 小时</button>
+            <button class="time-chip" data-hours="3">🕒 3 小时</button>
+            <button class="time-chip" data-hours="5">🕔 5 小时</button>
+            <button class="time-chip" data-hours="7">🕖 7 小时</button>
+            <button class="time-chip" data-hours="9">🕘 9 小时</button>
+        </div>
+        <button class="btn btn-primary btn-block mt-16" id="btnConfirmCreate">🎯 生成房间</button>
+        <button class="btn btn-secondary btn-block mt-8" id="btnBackHome1">← 返回</button>
+    </div>
+    <div class="card hidden" id="viewRoom">
+        <div class="room-top-bar" id="roomTopBar">
+            <span style="display:flex;align-items:center;gap:6px;">
+                <span class="conn-dot" id="connDot" title="连接状态"></span>
+                <span style="font-weight:700;font-size:14px;color:var(--text);" id="myNicknameLabel"></span>
+            </span>
+            <span class="timer-badge" id="timerBadge">⏳ --:--:--</span>
+            <span class="online-badge"><span class="online-dot"></span> <span id="onlineCount">0</span> 人在线</span>
+        </div>
+        <div class="chat-area mt-8" id="chatArea"><div class="chat-empty" id="chatEmpty">📭 还没人说话，发条消息吧~</div></div>
+        <div class="msg-input-area mt-12" id="msgInputArea">
+            <textarea class="msg-textarea" id="msgInput" placeholder="输入消息... 或拖拽文件到此处" rows="1" autocomplete="off" autocorrect="off"></textarea>
+            <input type="file" id="fileInput" style="display:none;" multiple>
+            <div class="input-btn-row">
+                <button class="btn-icon-circle" id="btnFileSelect" title="选择文件">➕️</button>
+                <button class="btn-icon-circle" id="btnSendMsg" title="发送">✔️</button>
+            </div>
+        </div>
+        <div class="room-bottom-bar mt-12" id="roomBottomBar">
+            <span class="room-code-badge" id="roomCodeBadge" title="点击复制房间码">----</span>
+            <button class="btn btn-danger btn-sm hidden" id="btnDestroyRoom">💣 销毁房间</button>
+            <button class="btn btn-exit btn-sm hidden" id="btnExitRoom">🚪 退出房间</button>
+            <span class="room-code-badge" id="btnShortcutHelp" title="快捷键">Hotkeys</span>
+            <div class="shortcut-popup hidden" id="shortcutPopup">
+                <div class="shortcut-item"><kbd>Enter</kbd> 发送消息</div>
+                <div class="shortcut-item"><kbd>Shift+Enter</kbd> 换行</div>
+                <div class="shortcut-item"><kbd>↑</kbd> 回填上条消息</div>
+                <div class="shortcut-item"><kbd>Ctrl+V</kbd> 粘贴图片/文件</div>
+                <div class="shortcut-item"><kbd>Ctrl+C</kbd> 复制房间码</div>
+                <div class="shortcut-item"><kbd>Esc</kbd> 关闭弹窗</div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-overlay hidden" id="modalDestroyConfirm">
+        <div class="modal-card">
+            <span style="font-size:48px;">💣</span><div class="modal-title" id="modalConfirmTitle">确定要销毁房间吗？</div>
+            <p class="modal-text" id="modalConfirmText">所有消息和文件将立即消失，<br>无法恢复。所有人将被踢出。</p>
+            <div class="modal-buttons"><button class="btn btn-secondary btn-sm" id="btnCancelDestroy">取消</button><button class="btn btn-danger btn-sm" id="btnConfirmDestroy">确认销毁</button></div>
+        </div>
+    </div>
+    <div class="modal-overlay hidden" id="modalDestroyed">
+        <div class="modal-card">
+            <span style="font-size:52px;">💥</span><div class="modal-title">房间已销毁</div>
+            <p class="modal-text">所有痕迹已被清除。<br>期待下次闪传~</p>
+            <button class="btn btn-primary btn-sm mt-8" id="btnBackHomeAfterDestroy">返回首页</button>
+        </div>
+    </div>
+    <!-- ========== 正在进入房间弹窗 ========== -->
+    <div class="modal-overlay hidden" id="modalJoining">
+        <div class="modal-card">
+            <span style="font-size:44px;">⏳</span>
+            <div class="modal-title">正在进入房间</div>
+            <p class="modal-text">请稍候...</p>
+        </div>
+    </div>
+
+    <div class="modal-overlay hidden" id="modalNickname">
+        <div class="modal-card">
+            <span style="font-size:44px;">🎭</span><div class="modal-title">设置你的昵称</div>
+            <p class="modal-text" id="nicknameContext">选个昵称，让房间里的人识别你，或自定义：</p>
+            <div class="flex-col" style="gap:16px;">
+                <input type="text" class="input nickname-input" id="nicknameInput" placeholder="输入昵称..." maxlength="12" autocomplete="off" autocorrect="off">
+                <div class="nickname-chips" id="nicknameSuggestions" style="margin-top:16px;"></div>
+            </div>
+            <button class="btn btn-primary btn-block mt-16" id="btnConfirmNickname">✨ 进入房间</button>
+        </div>
+    </div>
+</div>
+<script>
+(function() {
+    const CHARSET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    const STUN_SERVERS = { iceServers: [{ urls: ['stun:stun.l.google.com:19302'] }] };
+    const CHUNK_SIZE = 16384;
+
+    const WS_URL = (location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host;
+    const USER_COLORS = ['#58CC02','#FF9600','#1CB0F6','#FF4B4B','#CE82FF','#FF6EB4','#00CD9C','#FFC800'];
+    const RANDOM_NICKNAMES = ['闪电喵⚡','夜猫子🦉','宇航员🚀','小熊猫🐼','海豚音🐬','小幽灵👻','咖啡豆☕','旅行的云☁️','小飞象🐘','小辣椒🌶️','独角兽🦄','北极星⭐'];
+    let _colorIndex = 0;
+
+    const $ = s => document.querySelector(s);
+    const $$ = s => document.querySelectorAll(s);
+    const viewHome = $('#viewHome'), viewCreate = $('#viewCreate'), viewRoom = $('#viewRoom');
+    const btnShowCreate = $('#btnShowCreate'), btnBackHome1 = $('#btnBackHome1'), btnConfirmCreate = $('#btnConfirmCreate'), timeSelector = $('#timeSelector');
+    const joinCodeInput = $('#joinCodeInput'), btnJoinRoom = $('#btnJoinRoom');
+    const roomCodeBadge = $('#roomCodeBadge'), timerBadge = $('#timerBadge'), onlineCountEl = $('#onlineCount'), connDot = $('#connDot'), myNicknameLabel = $('#myNicknameLabel');
+    const chatArea = $('#chatArea'), chatEmpty = $('#chatEmpty'), msgInput = $('#msgInput'), btnSendMsg = $('#btnSendMsg');
+    const msgInputArea = $('#msgInputArea'), btnFileSelect = $('#btnFileSelect'), fileInput = $('#fileInput');
+    const btnDestroyRoom = $('#btnDestroyRoom'), btnExitRoom = $('#btnExitRoom'), btnShortcutHelp = $('#btnShortcutHelp'), shortcutPopup = $('#shortcutPopup');
+    const modalDestroyConfirm = $('#modalDestroyConfirm'), btnCancelDestroy = $('#btnCancelDestroy'), btnConfirmDestroy = $('#btnConfirmDestroy');
+    const modalDestroyed = $('#modalDestroyed'), btnBackHomeAfterDestroy = $('#btnBackHomeAfterDestroy');
+    const modalNickname = $('#modalNickname'), nicknameInput = $('#nicknameInput'), nicknameSuggestions = $('#nicknameSuggestions'), btnConfirmNickname = $('#btnConfirmNickname'), nicknameContext = $('#nicknameContext');
+    const modalJoining = $('#modalJoining');
+
+    let appState = {
+        view: 'home', isHost: false, roomCode: null, selfId: null, destroyHours: 1,
+        destroyTimestamp: null, timerInterval: null, peerConnections: {}, dataChannels: {},
+        fileReceiveBuffers: {}, destroyed: false, nickname: null, myColor: null, peerInfo: {},
+        _pending: null, _ws: null, _reconnectTimers: {},
+    };
+
+    function generateRoomCode() { let c=''; for(let i=0;i<4;i++)c+=CHARSET[Math.floor(Math.random()*CHARSET.length)]; return c; }
+    function generatePeerId() { return 'peer-'+Math.random().toString(36).substring(2,10)+'-'+Date.now().toString(36); }
+    function formatTime(ms) { if(ms<=0)return'00:00:00'; const t=Math.floor(ms/1000); return String(Math.floor(t/3600)).padStart(2,'0')+':'+String(Math.floor((t%3600)/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0'); }
+    function formatMsgTime(ts) { const d=new Date(ts); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+    function assignColor() { const c=USER_COLORS[_colorIndex%USER_COLORS.length];_colorIndex++; return c; }
+    function generateRandomNickname() { return RANDOM_NICKNAMES[Math.floor(Math.random()*RANDOM_NICKNAMES.length)]; }
+    function escapeHtml(s) { const d=document.createElement('div');d.textContent=s;return d.innerHTML.replace(/\n/g,'<br>'); }
+    function sleep(ms) { return new Promise(r=>setTimeout(r,ms)); }
+    function getOnlineCount() { return Object.keys(appState.dataChannels).filter(pid=>appState.dataChannels[pid].readyState==='open').length+1; }
+    function sendWS(msg) { if(appState._ws&&appState._ws.readyState===1)appState._ws.send(JSON.stringify(msg)); }
+
+    function showView(name) {
+        viewHome.classList.add('hidden');viewCreate.classList.add('hidden');viewRoom.classList.add('hidden');
+        appState.view=name;
+        if(name==='home'){viewHome.classList.remove('hidden');joinCodeInput.value='';}
+        else if(name==='create'){viewCreate.classList.remove('hidden');updateTimeChipUI();}
+        else if(name==='room'){viewRoom.classList.remove('hidden');}
+    }
+
+    btnShowCreate.addEventListener('click',()=>showView('create'));
+    btnBackHome1.addEventListener('click',()=>showView('home'));
+    timeSelector.addEventListener('click',e=>{const c=e.target.closest('.time-chip');if(!c)return;appState.destroyHours=parseInt(c.dataset.hours);updateTimeChipUI();});
+    function updateTimeChipUI(){$$('.time-chip').forEach(c=>c.classList.toggle('selected',parseInt(c.dataset.hours)===appState.destroyHours));}
+
+    // ==================== WebSocket ====================
+    function connectWS(roomCode, isHost, destroyTimestamp) {
+        if (appState._ws) { appState._ws.close(); appState._ws = null; }
+        return new Promise((resolve, reject) => {
+            const ws = new WebSocket(WS_URL);
+            ws.binaryType = 'arraybuffer';
+            ws.addEventListener('open', () => {
+                ws.send(JSON.stringify({
+                    type: 'register', roomCode, peerId: appState.selfId || generatePeerId(),
+                    nickname: appState.nickname || '...', color: appState.myColor || '#999',
+                    isHost, destroyTimestamp,
+                }));
+            });
+            ws.addEventListener('message', (e) => {
+                let msg; try { msg = JSON.parse(e.data); } catch(ex) { return; }
+                if (msg.type === 'register-ok') {
+                    appState._ws = ws;
+                    appState.roomCode = roomCode;
+                    if (msg.destroyTimestamp) appState.destroyTimestamp = msg.destroyTimestamp;
+                    ws.addEventListener('message', handleWSMessage);
+                    resolve(ws);
+                } else if (msg.type === 'error') {
+                    ws.close();
+                    reject(new Error(msg.text || '服务器错误'));
+                }
+            });
+            ws.addEventListener('error', () => reject(new Error('无法连接到服务器')));
+            setTimeout(() => { if (!appState._ws) { ws.close(); reject(new Error('连接超时')); } }, 8000);
+        });
+    }
+
+    // 创建房间
+    btnConfirmCreate.addEventListener('click', async () => {
+        const roomCode = generateRoomCode();
+        const selfId = generatePeerId();
+        const destroyTimestamp = Date.now() + appState.destroyHours * 3600 * 1000;
+        appState._pending = { mode: 'create', roomCode, selfId, destroyTimestamp };
+        nicknameInput.value = generateRandomNickname();
+        nicknameContext.textContent = '选个昵称，让房间里的人识别你，或自定义：';
+        renderNicknameSuggestions();
+        modalNickname.classList.remove('hidden');
+        setTimeout(() => nicknameInput.focus(), 100);
+    });
+
+    // 加入房间
+    btnJoinRoom.addEventListener('click', () => validateAndJoin());
+    joinCodeInput.addEventListener('keydown', e => { if (e.key === 'Enter') validateAndJoin(); });
+
+    function validateAndJoin() {
+        const raw = joinCodeInput.value.trim().toUpperCase();
+        if (raw.length !== 4 || ![...raw].every(c => CHARSET.includes(c))) {
+            shakeInput(joinCodeInput); joinCodeInput.placeholder = '无效格式，请重试';
+            setTimeout(() => joinCodeInput.placeholder = '输入 4 位房间码', 1500);
+            return;
+        }
+        const roomCode = raw;
+        const selfId = generatePeerId();
+        appState._pending = { mode: 'join', roomCode, selfId, destroyTimestamp: null };
+        nicknameInput.value = generateRandomNickname();
+        nicknameContext.textContent = '选个昵称，让房间里的人识别你，或自定义：';
+        renderNicknameSuggestions();
+        modalNickname.classList.remove('hidden');
+        setTimeout(() => nicknameInput.focus(), 100);
+    }
+
+    function renderNicknameSuggestions() {
+        nicknameSuggestions.innerHTML = '';
+        RANDOM_NICKNAMES.forEach(nick => {
+            const chip = document.createElement('button'); chip.className = 'nickname-chip'; chip.textContent = nick;
+            chip.addEventListener('click', () => { nicknameInput.value = nick; nicknameInput.focus(); });
+            nicknameSuggestions.appendChild(chip);
+        });
+    }
+
+    btnConfirmNickname.addEventListener('click', () => confirmNickname());
+    nicknameInput.addEventListener('keydown', e => { if (e.key === 'Enter') confirmNickname(); });
+    modalNickname.addEventListener('click', e => { if (e.target === modalNickname) { modalNickname.classList.add('hidden'); } });
+
+    async function confirmNickname() {
+        appState.nickname = nicknameInput.value.trim() || generateRandomNickname();
+        appState.myColor = assignColor();
+        modalNickname.classList.add('hidden');
+        const p = appState._pending;
+        appState._pending = null;
+        if (!p) return;
+        // 显示等待弹窗，等旧连接彻底释放
+        modalJoining.classList.remove('hidden');
+        await sleep(1500);
+        modalJoining.classList.add('hidden');
+        appState.selfId = p.selfId;
+        try {
+            await connectWS(p.roomCode, p.mode === 'create', p.destroyTimestamp);
+        } catch (err) {
+            alert('连接失败: ' + err.message);
+            return;
+        }
+        updateConnDot();
+        appState.isHost = p.mode === 'create';
+        appState.peerConnections = {}; appState.dataChannels = {};
+        appState.destroyed = false; appState.fileReceiveBuffers = {}; appState.peerInfo = {};
+        appState._reconnectTimers = {};
+        if (p.mode === 'create') {
+            openRoom();
+        } else {
+            openRoom();
+            addSystemMessage('🔗 已加入房间');
+            sendWS({ type: 'join-request', to: null, roomCode: appState.roomCode, nickname: appState.nickname, color: appState.myColor, timestamp: Date.now() });
+            appState._joinTimeout = setTimeout(() => {
+                if (Object.keys(appState.peerConnections).length === 0 && !appState.destroyed)
+                    addSystemMessage('⚠️ 未能连接到房主');
+            }, 8000);
+        }
+    }
+
+    function openRoom() {
+        showView('room'); updateRoomUI(); startTimer();
+        if (appState.isHost) {
+            addSystemMessage('🏠 房间已创建，自毁倒计时开始');
+            addSystemMessage('⏰ 将在 ' + appState.destroyHours + ' 小时后自动销毁');
+            btnDestroyRoom.classList.remove('hidden');
+            btnExitRoom.classList.add('hidden');
+        } else {
+            btnDestroyRoom.classList.add('hidden');
+            btnExitRoom.classList.remove('hidden');
+        }
+    }
+
+    function shakeInput(el) { el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake'); }
+
+    // ==================== 房间 UI ====================
+    function updateRoomUI() {
+        roomCodeBadge.textContent = appState.roomCode || '----';
+        myNicknameLabel.textContent = appState.nickname || '';
+        myNicknameLabel.style.color = appState.myColor || 'var(--text)';
+        updateOnlineCount(); updateTimerDisplay();
+    }
+    function updateOnlineCount() { onlineCountEl.textContent = getOnlineCount(); }
+    function updateConnDot() {
+        const ok = appState._ws && appState._ws.readyState === 1;
+        connDot.classList.toggle('disconnected', !ok);
+        connDot.title = ok ? '服务器已连接' : '服务器未连接';
+    }
+    function updateTimerDisplay() {
+        if (!appState.destroyTimestamp) return;
+        const r = Math.max(0, appState.destroyTimestamp - Date.now());
+        timerBadge.textContent = '⏳ ' + formatTime(r);
+        timerBadge.classList.toggle('urgent', r < 600000);
+    }
+    function startTimer() {
+        if (appState.timerInterval) clearInterval(appState.timerInterval);
+        appState.timerInterval = setInterval(() => { updateTimerDisplay(); if (appState.destroyTimestamp && Date.now() >= appState.destroyTimestamp) { if (appState.isHost && !appState.destroyed) destroyRoom(true); } }, 1000);
+    }
+    roomCodeBadge.addEventListener('click', () => {
+        if (!appState.roomCode) return;
+        navigator.clipboard.writeText(appState.roomCode).then(() => { roomCodeBadge.textContent = '已复制!'; setTimeout(() => roomCodeBadge.textContent = appState.roomCode, 1500); }).catch(()=>{});
+    });
+
+    // ==================== WS 消息处理 ====================
+    function handleWSMessage(event) {
+        // 二进制消息：来自 WS 中继的文件分片
+        if (event.data instanceof ArrayBuffer) {
+            handleWSChunk(event.data);
+            return;
+        }
+        let msg; try { msg = JSON.parse(event.data); } catch(e) { console.error('[Flash9] JSON解析失败:', e, 'raw前100字:', (typeof event.data==='string'?event.data:'').substring(0,100)); return; }
+        if (!msg || !msg.type) { console.log('[Flash9] 收到无type消息:', event.data); return; }
+        if (msg.from === appState.selfId) return;
+        switch (msg.type) {
+            case 'join-request': handleJoinRequest(msg); break;
+            case 'offer': handleOffer(msg); break;
+            case 'answer': handleAnswer(msg); break;
+            case 'ice-candidate': handleIceCandidate(msg); break;
+            case 'room-destroyed': handleRoomDestroyedNotify(msg); break;
+            case 'mesh-introduce': handleMeshIntroduce(msg); break;
+            case 'mesh-offer': handleMeshOffer(msg); break;
+            case 'mesh-answer': handleMeshAnswer(msg); break;
+            case 'reconnect-request': handleReconnectRequest(msg); break;
+            case 'peer-leave': handlePeerLeave(msg); break;
+            default: handleStructuredMessage(msg, msg.from); break;
+        }
+    }
+
+    async function handleJoinRequest(msg) {
+        if (!appState.isHost || appState.destroyed) return;
+        const peerId = msg.from;
+        // 如果仍有残留连接，先彻底清掉
+        if (appState.peerConnections[peerId]) { cleanupPeer(peerId); await sleep(100); }
+        if (appState._reconnectTimers[peerId]) { clearTimeout(appState._reconnectTimers[peerId]); delete appState._reconnectTimers[peerId]; }
+        if (appState._reconnectTimers[peerId + '_timeout']) { clearTimeout(appState._reconnectTimers[peerId + '_timeout']); delete appState._reconnectTimers[peerId + '_timeout']; }
+        const peerNickname = msg.nickname || '匿名', peerColor = msg.color || '#999';
+        addSystemMessage('👤 ' + peerNickname + ' 加入了房间');
+        appState.peerInfo[peerId] = { nickname: peerNickname, color: peerColor }; updateOnlineCount();
+        let pc; try { pc = new RTCPeerConnection(STUN_SERVERS); } catch (err) { addSystemMessage('⚠️ 浏览器不支持 WebRTC'); return; }
+        appState.peerConnections[peerId] = pc;
+        const dc = pc.createDataChannel('flash9-chat', { ordered: true }); setupDataChannel(dc, peerId, true); appState.dataChannels[peerId] = dc;
+        pc.onicecandidate = (event) => { if (event.candidate) { const c = event.candidate; sendWS({ type: 'ice-candidate', to: peerId, roomCode: appState.roomCode, candidate: { candidate: c.candidate, sdpMid: c.sdpMid, sdpMLineIndex: c.sdpMLineIndex } }); } };
+        pc.oniceconnectionstatechange = () => {};
+        try {
+            const offer = await pc.createOffer(); await pc.setLocalDescription(offer);
+            sendWS({ type: 'offer', to: peerId, roomCode: appState.roomCode, sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp }, hostNickname: appState.nickname, hostColor: appState.myColor });
+            for (const [existingId, existingDC] of Object.entries(appState.dataChannels)) {
+                if (existingId === peerId || existingDC.readyState !== 'open') continue;
+                sendWS({ type: 'mesh-introduce', to: existingId, roomCode: appState.roomCode, newPeerId: peerId, nickname: peerNickname, color: peerColor });
+            }
+        } catch (err) { addSystemMessage('⚠️ 连接失败: ' + (err.message || '未知错误')); cleanupPeer(peerId); }
+    }
+
+    async function handleOffer(msg) {
+        if (appState.isHost || appState.destroyed || msg.to !== appState.selfId) return;
+        const peerId = msg.from;
+        if (appState._joinTimeout) { clearTimeout(appState._joinTimeout); appState._joinTimeout = null; }
+        appState.peerInfo[peerId] = { nickname: msg.hostNickname || '房主', color: msg.hostColor || '#58CC02' };
+        let pc; try { pc = new RTCPeerConnection(STUN_SERVERS); } catch (err) { addSystemMessage('⚠️ 浏览器不支持 WebRTC'); return; }
+        appState.peerConnections[peerId] = pc;
+        pc.onicecandidate = (event) => { if (event.candidate) { const c = event.candidate; sendWS({ type: 'ice-candidate', to: peerId, roomCode: appState.roomCode, candidate: { candidate: c.candidate, sdpMid: c.sdpMid, sdpMLineIndex: c.sdpMLineIndex } }); } };
+        pc.ondatachannel = (event) => { setupDataChannel(event.channel, peerId, false); appState.dataChannels[peerId] = event.channel; addSystemMessage('✅ 已连接到房主'); updateOnlineCount(); };
+        pc.oniceconnectionstatechange = () => {};
+        try {
+            await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp)); const answer = await pc.createAnswer(); await pc.setLocalDescription(answer);
+            sendWS({ type: 'answer', to: peerId, roomCode: appState.roomCode, sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } });
+        } catch (err) { addSystemMessage('⚠️ 连接失败: ' + (err.message || '未知错误')); cleanupPeer(peerId); }
+    }
+
+    async function handleAnswer(msg) {
+        if (msg.to !== appState.selfId) return; const peerId = msg.from; const pc = appState.peerConnections[peerId]; if (!pc) return;
+        const wasReconnecting = !!(appState._reconnectTimers[peerId] || appState._reconnectTimers[peerId + '_timeout']);
+        if (appState._reconnectTimers[peerId]) { clearTimeout(appState._reconnectTimers[peerId]); delete appState._reconnectTimers[peerId]; }
+        if (appState._reconnectTimers[peerId + '_timeout']) { clearTimeout(appState._reconnectTimers[peerId + '_timeout']); delete appState._reconnectTimers[peerId + '_timeout']; }
+        try { await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp)); if (wasReconnecting) addSystemMessage('✅ 重连成功'); } catch (err) {}
+    }
+    function handleIceCandidate(msg) { const pc = appState.peerConnections[msg.from]; if (!pc) return; try { pc.addIceCandidate(new RTCIceCandidate(msg.candidate)); } catch (err) {} }
+    function handleRoomDestroyedNotify(msg) { if (appState.destroyed) return; appState.destroyed = true; addSystemMessage('💥 房间已被房主销毁'); setTimeout(() => showDestroyedModal(), 800); cleanupAll(); }
+
+    function handlePeerLeave(msg) {
+        if (appState.destroyed) return;
+        const peerId = msg.from;
+        const info = appState.peerInfo[peerId];
+        addSystemMessage('🚪 ' + (info ? info.nickname : '一位成员') + ' 退出了房间');
+        if (appState._reconnectTimers[peerId]) { clearTimeout(appState._reconnectTimers[peerId]); delete appState._reconnectTimers[peerId]; }
+        if (appState._reconnectTimers[peerId + '_timeout']) { clearTimeout(appState._reconnectTimers[peerId + '_timeout']); delete appState._reconnectTimers[peerId + '_timeout']; }
+        // 直接清理，置空 onclose 防止触发重连
+        delete appState.peerInfo[peerId];
+        const dc = appState.dataChannels[peerId]; if (dc) { dc.onclose = null; dc.close(); }
+        const pc = appState.peerConnections[peerId]; if (pc) pc.close();
+        delete appState.dataChannels[peerId];
+        delete appState.peerConnections[peerId];
+        updateOnlineCount();
+    }
+    function handleReconnectRequest(msg) {
+        if (appState.destroyed || msg.to !== appState.selfId) return;
+        const peerId = msg.from;
+        if (appState._reconnectTimers[peerId]) { clearTimeout(appState._reconnectTimers[peerId]); delete appState._reconnectTimers[peerId]; }
+        if (appState._reconnectTimers[peerId + '_timeout']) { clearTimeout(appState._reconnectTimers[peerId + '_timeout']); delete appState._reconnectTimers[peerId + '_timeout']; }
+        closePeerConnection(peerId);
+    }
+
+    async function handleMeshIntroduce(msg) {
+        if (appState.destroyed || msg.to !== appState.selfId) return;
+        const peerId = msg.newPeerId;
+        if (appState.peerConnections[peerId]) { cleanupPeer(peerId); await sleep(100); }
+        appState.peerInfo[peerId] = { nickname: msg.nickname || '匿名', color: msg.color || '#999' }; updateOnlineCount();
+        const pc = new RTCPeerConnection(STUN_SERVERS); appState.peerConnections[peerId] = pc;
+        const dc = pc.createDataChannel('flash9-chat', { ordered: true }); setupDataChannel(dc, peerId, false); appState.dataChannels[peerId] = dc;
+        pc.onicecandidate = (event) => { if (event.candidate) { const c = event.candidate; sendWS({ type: 'ice-candidate', to: peerId, roomCode: appState.roomCode, candidate: { candidate: c.candidate, sdpMid: c.sdpMid, sdpMLineIndex: c.sdpMLineIndex } }); } };
+        pc.oniceconnectionstatechange = () => {};
+        try { const offer = await pc.createOffer(); await pc.setLocalDescription(offer); sendWS({ type: 'mesh-offer', to: peerId, roomCode: appState.roomCode, sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp }, nickname: appState.nickname, color: appState.myColor }); } catch (err) { cleanupPeer(peerId); }
+    }
+    async function handleMeshOffer(msg) {
+        if (appState.destroyed || msg.to !== appState.selfId) return;
+        const peerId = msg.from;
+        if (appState.peerConnections[peerId]) { cleanupPeer(peerId); await sleep(100); }
+        appState.peerInfo[peerId] = { nickname: msg.nickname || '成员', color: msg.color || '#999' }; updateOnlineCount();
+        const pc = new RTCPeerConnection(STUN_SERVERS); appState.peerConnections[peerId] = pc;
+        pc.onicecandidate = (event) => { if (event.candidate) { const c = event.candidate; sendWS({ type: 'ice-candidate', to: peerId, roomCode: appState.roomCode, candidate: { candidate: c.candidate, sdpMid: c.sdpMid, sdpMLineIndex: c.sdpMLineIndex } }); } };
+        pc.ondatachannel = (event) => { setupDataChannel(event.channel, peerId, false); appState.dataChannels[peerId] = event.channel; updateOnlineCount(); };
+        pc.oniceconnectionstatechange = () => {};
+        try { await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp)); const answer = await pc.createAnswer(); await pc.setLocalDescription(answer); sendWS({ type: 'mesh-answer', to: peerId, roomCode: appState.roomCode, sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } }); } catch (err) { cleanupPeer(peerId); }
+    }
+    async function handleMeshAnswer(msg) {
+        if (msg.to !== appState.selfId) return; const pc = appState.peerConnections[msg.from]; if (!pc) return;
+        try { await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp)); } catch (err) {}
+    }
+
+    // ==================== DataChannel ====================
+    function setupDataChannel(dc, peerId, isHostSide) {
+        dc.onopen = () => { updateOnlineCount(); if (dc.readyState === 'open') { setTimeout(() => { if (dc.readyState === 'open') dc.send(JSON.stringify({ type: 'peer-info', peerId: appState.selfId, nickname: appState.nickname, color: appState.myColor, timestamp: Date.now() })); }, 200); } };
+        dc.onmessage = (event) => handleDataChannelMessage(event.data, peerId);
+        dc.onclose = () => {
+            if (!appState.destroyed) {
+                const info = appState.peerInfo[peerId];
+                if (!info) { closePeerConnection(peerId); updateOnlineCount(); return; }
+                const name = info.nickname;
+                closePeerConnection(peerId); addSystemMessage('⚠️ ' + name + ' 断开，尝试重连...'); startReconnect(peerId, 1);
+            }
+            else cleanupPeer(peerId);
+        };
+        dc.onerror = () => {};
+    }
+    const _earlyChunks = {};
+    function handleWSChunk(arrayBuffer) {
+        const view = new DataView(arrayBuffer); const idLen = view.getUint32(0, false);
+        const idBytes = new Uint8Array(arrayBuffer, 4, idLen); const transferId = new TextDecoder().decode(idBytes);
+        const chunkIndex = view.getUint32(4 + idLen, false); const chunkData = new Uint8Array(arrayBuffer, 8 + idLen);
+        const buf = appState.fileReceiveBuffers[transferId];
+        if (!buf) {
+            // file-meta 还没到，暂存
+            if (!_earlyChunks[transferId]) _earlyChunks[transferId] = [];
+            _earlyChunks[transferId].push({ chunkIndex, chunkData });
+            return;
+        }
+        buf.chunks[chunkIndex] = chunkData; buf.receivedCount++;
+        updateFileProgress(transferId, buf.receivedCount, buf.totalChunks, false);
+        if (buf.receivedCount >= buf.totalChunks) assembleAndDownloadFile(transferId);
+    }
+    function handleDataChannelMessage(data, peerId) {
+        if (typeof data === 'string') { try { handleStructuredMessage(JSON.parse(data), peerId); } catch (e) { const info = appState.peerInfo[peerId] || {}; addChatBubble(data, 'others', info.nickname, info.color, Date.now()); } }
+        else if (data instanceof ArrayBuffer) handleFileChunk(data, peerId);
+        else if (data instanceof Blob) data.arrayBuffer().then(buf => handleFileChunk(buf, peerId));
+    }
+    function handleStructuredMessage(msg, peerId) {
+        switch (msg.type) {
+            case 'system': addSystemMessage(msg.text, msg.timestamp); break;
+            case 'chat': const ci = appState.peerInfo[peerId] || {}; addChatBubble(msg.text, 'others', ci.nickname, ci.color, msg.timestamp); break;
+            case 'peer-info': if (!appState.peerInfo[msg.peerId]) { appState.peerInfo[msg.peerId] = { nickname: msg.nickname, color: msg.color }; updateOnlineCount(); } break;
+            case 'file-meta': appState.fileReceiveBuffers[msg.transferId] = { meta: msg, chunks: {}, totalChunks: msg.totalChunks, receivedCount: 0 }; addFileBubble(msg.transferId, msg.fileName, msg.fileSize, 'receive'); const e = _earlyChunks[msg.transferId]; if (e) { const b = appState.fileReceiveBuffers[msg.transferId]; for (const c of e) { b.chunks[c.chunkIndex] = c.chunkData; b.receivedCount++; } updateFileProgress(msg.transferId, b.receivedCount, b.totalChunks, false); delete _earlyChunks[msg.transferId]; if (b.receivedCount >= b.totalChunks) assembleAndDownloadFile(msg.transferId); } break;
+            case 'file-complete': break;
+        }
+    }
+
+    // ==================== 文件传输 ====================
+    function handleFileChunk(arrayBuffer, peerId) {
+        const view = new DataView(arrayBuffer); const idLen = view.getUint32(0, false);
+        const idBytes = new Uint8Array(arrayBuffer, 4, idLen); const transferId = new TextDecoder().decode(idBytes);
+        const chunkIndex = view.getUint32(4 + idLen, false); const chunkData = new Uint8Array(arrayBuffer, 8 + idLen);
+        const buf = appState.fileReceiveBuffers[transferId]; if (!buf) return;
+        buf.chunks[chunkIndex] = chunkData; buf.receivedCount++;
+        if (buf.receivedCount >= buf.totalChunks) assembleAndDownloadFile(transferId);
+    }
+    function assembleAndDownloadFile(transferId) {
+        const buf = appState.fileReceiveBuffers[transferId]; if (!buf || buf._completed) return;
+        buf._completed = true; showDownloadButton(transferId);
+    }
+    window._flash9DownloadFile = function(transferId) {
+        const buf = appState.fileReceiveBuffers[transferId]; if (!buf) return; const meta = buf.meta;
+        const arr = []; for (let i = 0; i < buf.totalChunks; i++) { if (!buf.chunks[i]) return; arr.push(buf.chunks[i]); }
+        const blob = new Blob(arr, { type: meta.fileType || 'application/octet-stream' });
+        const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = meta.fileName;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+        const bubble = document.getElementById('file-bubble-' + transferId); if (bubble) { const btn = bubble.querySelector('button'); if (btn) btn.textContent = '📥 再次下载'; }
+    };
+
+    // ==================== 聊天 ====================
+    function addChatBubble(text, type, senderName, senderColor, timestamp) {
+        const ce = document.getElementById('chatEmpty') || window._chatEmptyRef; if (ce && ce.id === 'chatEmpty') ce.classList.add('hidden');
+        const b = document.createElement('div'); b.className = 'chat-bubble ' + type;
+        let c = ''; if (type === 'others' && senderName) c += '<div class="chat-sender" style="color:' + (senderColor||'#999') + '">👤 ' + escapeHtml(senderName) + '</div>';
+        c += escapeHtml(text); c += '<div class="chat-time">' + formatMsgTime(timestamp || Date.now()) + '</div>';
+        b.innerHTML = c; chatArea.appendChild(b); chatArea.scrollTop = chatArea.scrollHeight;
+    }
+    function addSystemMessage(text, timestamp) {
+        const ce = document.getElementById('chatEmpty') || window._chatEmptyRef; if (ce && ce.id === 'chatEmpty') ce.classList.add('hidden');
+        const b = document.createElement('div'); b.className = 'chat-bubble system';
+        b.innerHTML = escapeHtml(text) + '<div class="chat-time">' + formatMsgTime(timestamp || Date.now()) + '</div>';
+        chatArea.appendChild(b); chatArea.scrollTop = chatArea.scrollHeight;
+    }
+    let _lastMessage = '';
+    function sendMessage(text) { if (!text.trim()) return; _lastMessage = text.trim(); const ts = Date.now(); addChatBubble(text.trim(), 'mine', null, null, ts); broadcastToAllPeers(JSON.stringify({ type: 'chat', text: text.trim(), senderId: appState.selfId, timestamp: ts })); }
+    btnSendMsg.addEventListener('click', () => { sendMessage(msgInput.value); msgInput.value = ''; autoResizeTextarea(); });
+    msgInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(msgInput.value); msgInput.value = ''; autoResizeTextarea(); } });
+    msgInput.addEventListener('input', autoResizeTextarea);
+    function autoResizeTextarea() { msgInput.style.height = 'auto'; msgInput.style.height = Math.min(msgInput.scrollHeight, 120) + 'px'; }
+    function broadcastToAllPeers(data, maxBuffer) { for (const [, dc] of Object.entries(appState.dataChannels)) { if (dc.readyState === 'open') { if (maxBuffer && dc.bufferedAmount > maxBuffer) return false; try { dc.send(data); } catch (err) { return false; } } } return true; }
+
+    // ==================== 粘贴 + 文件拖拽 ====================
+    document.addEventListener('paste', (e) => {
+        if (appState.view !== 'room') return;
+        if ((modalNickname && !modalNickname.classList.contains('hidden')) || (modalDestroyConfirm && !modalDestroyConfirm.classList.contains('hidden'))) return;
+        const items = e.clipboardData?.items; if (!items) return; const files = [];
+        for (const item of items) { if (item.kind === 'file') { let file = item.getAsFile(); if (!file.name) { const ext = (file.type || 'image/png').split('/')[1] || 'png'; file = new File([file], 'clipboard_' + Date.now() + '.' + ext, { type: file.type || 'image/png' }); } files.push(file); } }
+        if (files.length > 0) { e.preventDefault(); for (const file of files) handleFiles([file]); }
+    });
+    btnFileSelect.addEventListener('click', () => fileInput.click());
+    msgInputArea.addEventListener('dragover', e => { e.preventDefault(); msgInputArea.classList.add('drag-over'); });
+    msgInputArea.addEventListener('dragleave', () => msgInputArea.classList.remove('drag-over'));
+    msgInputArea.addEventListener('drop', e => { e.preventDefault(); msgInputArea.classList.remove('drag-over'); if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files); });
+    fileInput.addEventListener('change', () => { if (fileInput.files.length) { handleFiles(fileInput.files); fileInput.value = ''; } });
+    function handleFiles(list) { for (const f of list) sendFile(f); }
+    function addFileBubble(tid, fileName, fileSize, direction) {
+        const ce = document.getElementById('chatEmpty') || window._chatEmptyRef; if (ce && ce.id === 'chatEmpty') ce.classList.add('hidden');
+        const b = document.createElement('div'); const isMine = direction === 'send'; b.className = 'chat-bubble ' + (isMine ? 'mine' : 'others'); b.id = 'file-bubble-' + tid;
+        let inner = '<div class="file-bubble"><div class="file-bubble-name">' + (isMine ? '📤 ' : '📥 ') + escapeHtml(fileName) + '</div><div class="file-bubble-meta"><span class="file-bubble-size">' + formatFileSize(fileSize) + '</span><span class="file-bubble-status" id="file-status-' + tid + '">0%</span></div><div class="chat-time">' + formatMsgTime(Date.now()) + '</div></div>';
+        b.innerHTML = inner; chatArea.appendChild(b); chatArea.scrollTop = chatArea.scrollHeight; return b;
+    }
+    function sendToAll(chunk) {
+        for (const [, dc] of Object.entries(appState.dataChannels)) {
+            if (dc.readyState !== 'open') continue;
+            try { dc.send(chunk); } catch (e) { return false; }
+        }
+        return true;
+    }
+    async function sendFile(file) {
+        const tid = 'ft-' + Date.now() + '-' + Math.random().toString(36).substring(2,6); const total = Math.ceil(file.size / CHUNK_SIZE);
+        sendWS({ type: 'file-meta', transferId: tid, fileName: file.name, fileSize: file.size, fileType: file.type || 'application/octet-stream', totalChunks: total, senderId: appState.selfId });
+        addFileBubble(tid, file.name, file.size, 'send');
+        const reader = file.stream().getReader(); let ci = 0, sent = 0, pending = new Uint8Array(0);
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (value) { const m = new Uint8Array(pending.length + value.length); m.set(pending); m.set(value, pending.length); pending = m; }
+                while (pending.length >= CHUNK_SIZE || (done && pending.length > 0)) {
+                    const take = Math.min(CHUNK_SIZE, pending.length); const chunk = pending.subarray(0, take);
+                    const ib = new TextEncoder().encode(tid); const hs = 4 + ib.length + 4;
+                    const cb = new ArrayBuffer(hs + take); const vw = new DataView(cb);
+                    vw.setUint32(0, ib.length, false); new Uint8Array(cb, 4, ib.length).set(ib);
+                    vw.setUint32(4 + ib.length, ci, false); new Uint8Array(cb, hs).set(chunk);
+                    appState._ws.send(cb); sent += take; ci++;
+                    updateFileProgress(tid, sent, file.size, true);
+                    if (ci % 10 === 0) await sleep(5);
+                    pending = pending.subarray(take);
+                }
+                if (done) break;
+            }
+        } catch (err) { addSystemMessage('⚠️ 文件发送中断'); }
+        sendWS({ type: 'file-complete', transferId: tid }); markFileComplete(tid);
+    }
+    function updateFileProgress(tid, bytes, total, isSend) { const el = document.getElementById('file-status-' + tid); if (el) el.textContent = Math.round(bytes / total * 100) + '%'; }
+    function markFileComplete(tid) { const el = document.getElementById('file-status-' + tid); if (el) el.textContent = '✅ 上传成功'; }
+    function showDownloadButton(tid) { const el = document.getElementById('file-status-' + tid); if (el) el.innerHTML = '<button class="btn btn-primary btn-xs" style="margin-top:-2px;" onclick="window._flash9DownloadFile(\'' + tid + '\')">📥 下载文件</button>'; }
+    function formatFileSize(b) { if (b < 1024) return b + ' B'; if (b < 1048576) return (b / 1024).toFixed(1) + ' KB'; return (b / 1048576).toFixed(1) + ' MB'; }
+
+    // ==================== 房间销毁 ====================
+    function destroyRoom(isAuto) { if (appState.destroyed) return; appState.destroyed = true; addSystemMessage(isAuto ? '⏰ 自毁时间到，房间自动销毁' : '💣 房间已被手动销毁'); sendWS({ type: 'room-destroyed', roomCode: appState.roomCode }); setTimeout(() => showDestroyedModal(), 600); cleanupAll(); }
+    function showDestroyedModal() { modalDestroyConfirm.classList.add('hidden'); modalDestroyed.classList.remove('hidden'); }
+    btnDestroyRoom.addEventListener('click', () => {
+        if (!appState.isHost || appState.destroyed) return;
+        $('#modalConfirmTitle').textContent = '确定要销毁房间吗？';
+        $('#modalConfirmText').innerHTML = '所有消息和文件将立即消失，<br>无法恢复。所有人将被踢出。';
+        btnConfirmDestroy.textContent = '确认销毁';
+        btnConfirmDestroy.className = 'btn btn-danger btn-sm';
+        btnConfirmDestroy.onclick = () => { modalDestroyConfirm.classList.add('hidden'); destroyRoom(false); };
+        modalDestroyConfirm.classList.remove('hidden');
+    });
+    btnCancelDestroy.addEventListener('click', () => modalDestroyConfirm.classList.add('hidden'));
+    btnBackHomeAfterDestroy.addEventListener('click', () => { modalDestroyed.classList.add('hidden'); resetAll(); showView('home'); });
+    btnExitRoom.addEventListener('click', () => {
+        $('#modalConfirmTitle').textContent = '确定要退出房间吗？';
+        $('#modalConfirmText').innerHTML = '你将从房间中退出，<br>其他成员会收到通知。';
+        btnConfirmDestroy.textContent = '退出';
+        btnConfirmDestroy.onclick = () => { modalDestroyConfirm.classList.add('hidden'); sendWS({ type: 'peer-leave', roomCode: appState.roomCode }); addSystemMessage('🚪 你退出了房间'); setTimeout(() => { resetAll(); showView('home'); }, 300); };
+        modalDestroyConfirm.classList.remove('hidden');
+    });
+
+    // ==================== 清理 ====================
+    function closePeerConnection(peerId) { const pc = appState.peerConnections[peerId]; if (pc) { pc.close(); delete appState.peerConnections[peerId]; } const dc = appState.dataChannels[peerId]; if (dc) { dc.close(); delete appState.dataChannels[peerId]; } updateOnlineCount(); }
+    function cleanupPeer(peerId) { closePeerConnection(peerId); delete appState.peerInfo[peerId]; delete appState._reconnectTimers[peerId]; updateOnlineCount(); }
+    function startReconnect(peerId, attempt) { if (appState.destroyed || appState._reconnectTimers[peerId]) return; const delay = Math.min(1000 * Math.pow(2, attempt - 1), 30000); const info = appState.peerInfo[peerId]; if (!info) { cleanupPeer(peerId); return; } appState._reconnectTimers[peerId] = setTimeout(() => { delete appState._reconnectTimers[peerId]; if (appState.destroyed) { cleanupPeer(peerId); return; } sendWS({ type: 'reconnect-request', to: peerId, roomCode: appState.roomCode, nickname: appState.nickname, color: appState.myColor }); doReconnect(peerId, info.nickname, info.color); const timeout = setTimeout(() => { startReconnect(peerId, attempt + 1); }, 5000); appState._reconnectTimers[peerId + '_timeout'] = timeout; }, delay); }
+    async function doReconnect(peerId, peerNickname, peerColor) { if (appState.peerConnections[peerId]) return; const pc = new RTCPeerConnection(STUN_SERVERS); appState.peerConnections[peerId] = pc; const dc = pc.createDataChannel('flash9-chat', { ordered: true }); setupDataChannel(dc, peerId, true); appState.dataChannels[peerId] = dc; pc.onicecandidate = (event) => { if (event.candidate) { const c = event.candidate; sendWS({ type: 'ice-candidate', to: peerId, roomCode: appState.roomCode, candidate: { candidate: c.candidate, sdpMid: c.sdpMid, sdpMLineIndex: c.sdpMLineIndex } }); } }; pc.oniceconnectionstatechange = () => {}; try { const offer = await pc.createOffer(); await pc.setLocalDescription(offer); sendWS({ type: 'offer', to: peerId, roomCode: appState.roomCode, sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp }, hostNickname: appState.nickname, hostColor: appState.myColor }); } catch (err) { cleanupPeer(peerId); } }
+    function cleanupAll() { if (appState.timerInterval) { clearInterval(appState.timerInterval); appState.timerInterval = null; } for (const pid of Object.keys(appState.peerConnections)) cleanupPeer(pid); if (appState._ws) { appState._ws.close(); appState._ws = null; } updateConnDot(); appState.fileReceiveBuffers = {}; for (const k in _earlyChunks) delete _earlyChunks[k]; chatArea.innerHTML = '<div class="chat-empty" id="chatEmpty">📭 还没人说话，发条消息吧~</div>'; window._chatEmptyRef = chatArea.querySelector('.chat-empty'); btnDestroyRoom.classList.add('hidden'); btnExitRoom.classList.add('hidden'); onlineCountEl.textContent = '0'; }
+    function resetAll() { cleanupAll(); appState.isHost = false; appState.roomCode = null; appState.selfId = null; appState.destroyTimestamp = null; appState.destroyHours = 1; appState.peerConnections = {}; appState.dataChannels = {}; appState.destroyed = false; appState.fileReceiveBuffers = {}; appState.nickname = null; appState.myColor = null; appState.peerInfo = {}; appState._pending = null; appState._reconnectTimers = {}; if (appState._joinTimeout) { clearTimeout(appState._joinTimeout); appState._joinTimeout = null; } if (appState.timerInterval) { clearInterval(appState.timerInterval); appState.timerInterval = null; } modalDestroyed.classList.add('hidden'); modalDestroyConfirm.classList.add('hidden'); modalNickname.classList.add('hidden'); modalJoining.classList.add('hidden'); timerBadge.classList.remove('urgent'); timerBadge.textContent = '⏳ --:--:--'; roomCodeBadge.textContent = '----'; onlineCountEl.textContent = '0'; connDot.classList.add('disconnected'); myNicknameLabel.textContent = ''; chatArea.innerHTML = '<div class="chat-empty" id="chatEmpty">📭 还没人说话，发条消息吧~</div>'; window._chatEmptyRef = chatArea.querySelector('.chat-empty'); joinCodeInput.value = ''; joinCodeInput.placeholder = '输入 4 位房间码'; }
+
+    // ==================== 快捷键 ====================
+    document.addEventListener('keydown', (e) => {
+        if (appState.view !== 'room') return;
+        if (e.key === 'Escape') { if (shortcutPopup && !shortcutPopup.classList.contains('hidden')) { shortcutPopup.classList.add('hidden'); return; } if (modalDestroyConfirm && !modalDestroyConfirm.classList.contains('hidden')) { modalDestroyConfirm.classList.add('hidden'); return; } if (modalDestroyed && !modalDestroyed.classList.contains('hidden')) { modalDestroyed.classList.add('hidden'); resetAll(); showView('home'); return; } }
+        if (e.ctrlKey && e.key === 'c' && !e.target.closest('textarea, input')) { if (appState.roomCode) { navigator.clipboard.writeText(appState.roomCode).catch(()=>{}); roomCodeBadge.textContent = '已复制!'; setTimeout(() => roomCodeBadge.textContent = appState.roomCode, 1500); } }
+        if (e.key === 'ArrowUp' && document.activeElement === msgInput && !msgInput.value) { if (_lastMessage) { msgInput.value = _lastMessage; autoResizeTextarea(); setTimeout(() => { msgInput.selectionStart = msgInput.selectionEnd = msgInput.value.length; }, 0); } }
+    });
+    btnShortcutHelp.addEventListener('click', (e) => { e.stopPropagation(); shortcutPopup.classList.toggle('hidden'); });
+    document.addEventListener('click', (e) => { if (shortcutPopup && !shortcutPopup.classList.contains('hidden') && !btnShortcutHelp.contains(e.target) && !shortcutPopup.contains(e.target)) shortcutPopup.classList.add('hidden'); });
+
+    function init() { showView('home'); window._chatEmptyRef = chatArea.querySelector('.chat-empty'); }
+    init();
+    console.log('⚡ Flash9 v6 WebSocket 就绪: ' + WS_URL);
+})();
+</script>
+</body>
+</html>

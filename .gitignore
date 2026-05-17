@@ -1,0 +1,7 @@
+.deepseek/
+.vscode/
+.idea/
+*.pyc
+__pycache__/
+node_modules/
+Flash9开发日志.md
