@@ -484,7 +484,7 @@
     }
 
     async function handleJoinRequest(msg) {
-        if (!appState.isHost || appState.destroyed) return;
+        if (appState.destroyed) return;
         const peerId = msg.from;
         // 如果仍有残留连接，先彻底清掉
         if (appState.peerConnections[peerId]) { cleanupPeer(peerId); await sleep(100); }
@@ -509,14 +509,14 @@
     }
 
     async function handleOffer(msg) {
-        if (appState.isHost || appState.destroyed || msg.to !== appState.selfId) return;
+        if (appState.destroyed || msg.to !== appState.selfId) return;
         const peerId = msg.from;
         if (appState._joinTimeout) { clearTimeout(appState._joinTimeout); appState._joinTimeout = null; }
-        appState.peerInfo[peerId] = { nickname: msg.hostNickname || '房主', color: msg.hostColor || '#58CC02' };
+        appState.peerInfo[peerId] = { nickname: msg.hostNickname || '成员', color: msg.hostColor || '#58CC02' };
         let pc; try { pc = new RTCPeerConnection(STUN_SERVERS); } catch (err) { addSystemMessage('⚠️ 浏览器不支持 WebRTC'); return; }
         appState.peerConnections[peerId] = pc;
         pc.onicecandidate = (event) => { if (event.candidate) { const c = event.candidate; sendWS({ type: 'ice-candidate', to: peerId, roomCode: appState.roomCode, candidate: { candidate: c.candidate, sdpMid: c.sdpMid, sdpMLineIndex: c.sdpMLineIndex } }); } };
-        pc.ondatachannel = (event) => { setupDataChannel(event.channel, peerId, false); appState.dataChannels[peerId] = event.channel; addSystemMessage('✅ 已连接到房主'); updateOnlineCount(); };
+        pc.ondatachannel = (event) => { setupDataChannel(event.channel, peerId, false); appState.dataChannels[peerId] = event.channel; addSystemMessage('✅ 已连接到 ' + (msg.hostNickname || '成员')); updateOnlineCount(); };
         pc.oniceconnectionstatechange = () => {};
         try {
             await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp)); const answer = await pc.createAnswer(); await pc.setLocalDescription(answer);
