@@ -74,6 +74,17 @@ wss.on('connection', (ws) => {
             const { roomCode, peerId, nickname, color, isHost, destroyTimestamp } = msg;
             if (!roomCode || !peerId) return;
 
+            // 房主重连：房间已存在且 hostPeerId 匹配
+            if (isHost && rooms.has(roomCode)) {
+                const room = rooms.get(roomCode);
+                if (room.hostPeerId !== peerId) { ws.send(JSON.stringify({ type: 'error', text: '该房间已存在且你并非房主' })); return; }
+                room.members.add(ws);
+                clients.set(ws, { roomCode, peerId, nickname, color });
+                ws.send(JSON.stringify({ type: 'register-ok', roomCode, destroyTimestamp: room.destroyTimestamp }));
+                broadcastMemberUpdate(room);
+                console.log(`🏠 房主重连: ${roomCode} (${nickname})`);
+                return;
+            }
             // 加入已有房间
             if (!isHost) {
                 const room = rooms.get(roomCode);

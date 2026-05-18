@@ -270,8 +270,8 @@
     function generateRandomNickname() { return RANDOM_NICKNAMES[Math.floor(Math.random()*RANDOM_NICKNAMES.length)]; }
     function escapeHtml(s) { const d=document.createElement('div');d.textContent=s;return d.innerHTML.replace(/\n/g,'<br>'); }
     function sleep(ms) { return new Promise(r=>setTimeout(r,ms)); }
-    function getOnlineCount() { return appState._serverOnlineCount || 1; }
-    function handleMemberUpdate(msg) { appState._serverOnlineCount = msg.count || 1; updateOnlineCount(); }
+    function getOnlineCount() { return Object.values(appState.dataChannels).filter(dc => dc.readyState === 'open').length + 1; }
+    function handleMemberUpdate(msg) { updateOnlineCount(); }
     function sendWS(msg) { if(appState._ws&&appState._ws.readyState===1)appState._ws.send(JSON.stringify(msg)); }
 
     function showView(name) {
@@ -343,8 +343,9 @@
             return;
         }
         const roomCode = raw;
-        const selfId = generatePeerId();
-        appState._pending = { mode: 'join', roomCode, selfId, destroyTimestamp: null };
+        let mode = 'join', selfId = generatePeerId(), destroyTimestamp = null;
+        try { const saved = JSON.parse(localStorage.getItem('flash9_host')); if (saved && saved.roomCode === roomCode && Date.now() < saved.destroyTimestamp) { mode = 'rejoin'; selfId = saved.peerId; destroyTimestamp = saved.destroyTimestamp; } } catch(e) {}
+        appState._pending = { mode, roomCode, selfId, destroyTimestamp };
         nicknameInput.value = generateRandomNickname();
         nicknameContext.textContent = '选个昵称，让房间里的人识别你，或自定义：';
         renderNicknameSuggestions();
@@ -378,25 +379,26 @@
         modalJoining.classList.add('hidden');
         appState.selfId = p.selfId;
         try {
-            await connectWS(p.roomCode, p.mode === 'create', p.destroyTimestamp);
+            await connectWS(p.roomCode, p.mode === 'create' || p.mode === 'rejoin', p.destroyTimestamp);
         } catch (err) {
             alert('连接失败: ' + err.message);
             return;
         }
         updateConnDot();
-        appState.isHost = p.mode === 'create';
+        appState.isHost = (p.mode === 'create' || p.mode === 'rejoin');
         appState.peerConnections = {}; appState.dataChannels = {};
         appState.destroyed = false; appState.fileReceiveBuffers = {}; appState.peerInfo = {};
         appState._reconnectTimers = {};
-        if (p.mode === 'create') {
+        if (p.mode === 'create' || p.mode === 'rejoin') {
             openRoom();
+            if (p.mode === 'create') { try { localStorage.setItem('flash9_host', JSON.stringify({ roomCode: appState.roomCode, peerId: appState.selfId, destroyTimestamp: appState.destroyTimestamp })); } catch(e) {} }
         } else {
             openRoom();
             addSystemMessage('🔗 已加入房间');
             sendWS({ type: 'join-request', to: null, roomCode: appState.roomCode, nickname: appState.nickname, color: appState.myColor, timestamp: Date.now() });
             appState._joinTimeout = setTimeout(() => {
                 if (Object.keys(appState.peerConnections).length === 0 && !appState.destroyed)
-                    addSystemMessage('⚠️ 未能连接到房主');
+                    addSystemMessage('⚠️ 未能连接到任何成员');
             }, 8000);
         }
     }
@@ -437,7 +439,7 @@
     }
     function startTimer() {
         if (appState.timerInterval) clearInterval(appState.timerInterval);
-        appState.timerInterval = setInterval(() => { updateTimerDisplay(); if (appState.destroyTimestamp && Date.now() >= appState.destroyTimestamp) { if (appState.isHost && !appState.destroyed) destroyRoom(true); } }, 1000);
+        appState.timerInterval = setInterval(() => { updateTimerDisplay(); if (appState.destroyTimestamp && Date.now() >= appState.destroyTimestamp) { if (!appState.destroyed) destroyRoom(true); } }, 1000);
     }
     function copyToClipboard(text) {
         if ((location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1') && navigator.clipboard && navigator.clipboard.writeText) {
@@ -511,6 +513,7 @@
     async function handleOffer(msg) {
         if (appState.destroyed || msg.to !== appState.selfId) return;
         const peerId = msg.from;
+        if (appState.peerConnections[peerId]) { cleanupPeer(peerId); await sleep(100); }
         if (appState._joinTimeout) { clearTimeout(appState._joinTimeout); appState._joinTimeout = null; }
         appState.peerInfo[peerId] = { nickname: msg.hostNickname || '成员', color: msg.hostColor || '#58CC02' };
         let pc; try { pc = new RTCPeerConnection(STUN_SERVERS); } catch (err) { addSystemMessage('⚠️ 浏览器不支持 WebRTC'); return; }
@@ -607,7 +610,7 @@
         const buf = appState.fileReceiveBuffers[transferId];
         if (!buf) {
             // file-meta 还没到，暂存
-            if (!_earlyChunks[transferId]) _earlyChunks[transferId] = [];
+            if (!_earlyChunks[transferId]) { _earlyChunks[transferId] = []; setTimeout(() => { delete _earlyChunks[transferId]; }, 30000); }
             _earlyChunks[transferId].push({ chunkIndex, chunkData });
             return;
         }
@@ -700,13 +703,6 @@
         setupBubbleCopy(b);
         chatArea.appendChild(b); chatArea.scrollTop = chatArea.scrollHeight; return b;
     }
-    function sendToAll(chunk) {
-        for (const [, dc] of Object.entries(appState.dataChannels)) {
-            if (dc.readyState !== 'open') continue;
-            try { dc.send(chunk); } catch (e) { return false; }
-        }
-        return true;
-    }
     async function sendFile(file) {
         const MAX_SIZE = 9 * 1024 * 1024;
         if (file.size > MAX_SIZE) { addSystemMessage('❌ 文件 "' + file.name + '" 超过 9MB 限制，无法发送'); return; }
@@ -764,7 +760,7 @@
     });
 
     // ==================== 房间销毁 ====================
-    function destroyRoom(isAuto) { if (appState.destroyed) return; appState.destroyed = true; addSystemMessage(isAuto ? '⏰ 自毁时间到，房间自动销毁' : '💣 房间已被手动销毁'); sendWS({ type: 'room-destroyed', roomCode: appState.roomCode }); setTimeout(() => showDestroyedModal(), 600); cleanupAll(); }
+    function destroyRoom(isAuto) { if (appState.destroyed) return; appState.destroyed = true; addSystemMessage(isAuto ? '⏰ 自毁时间到，房间自动销毁' : '💣 房间已被手动销毁'); sendWS({ type: 'room-destroyed', roomCode: appState.roomCode }); try { localStorage.removeItem('flash9_host'); } catch(e) {} setTimeout(() => showDestroyedModal(), 600); cleanupAll(); }
     function showDestroyedModal() { modalDestroyConfirm.classList.add('hidden'); modalDestroyed.classList.remove('hidden'); }
     btnDestroyRoom.addEventListener('click', () => {
         if (!appState.isHost || appState.destroyed) return;
