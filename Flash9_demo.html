@@ -503,7 +503,7 @@
             case 'system': addSystemMessage(msg.text, msg.timestamp); break;
             case 'chat': const ci = appState.peerInfo[peerId] || {}; addChatBubble(msg.text, 'others', ci.nickname, ci.color, msg.timestamp, peerId); break;
             case 'peer-info': appState.peerInfo[msg.peerId] = { nickname: msg.nickname, color: msg.color }; updateBubbleNicknames(msg.peerId, msg.nickname, msg.color); updateOnlineCount(); break;
-            case 'file-meta': appState.fileReceiveBuffers[msg.transferId] = { meta: msg, chunks: {}, totalChunks: msg.totalChunks, receivedCount: 0 }; const cii = appState.peerInfo[peerId] || {}; addFileBubble(msg.transferId, msg.fileName, msg.fileSize, 'receive', cii.nickname, cii.color); const e = _earlyChunks[msg.transferId]; if (e) { const b = appState.fileReceiveBuffers[msg.transferId]; for (const c of e) { b.chunks[c.chunkIndex] = c.chunkData; b.receivedCount++; } updateFileProgress(msg.transferId, b.receivedCount, b.totalChunks, false); delete _earlyChunks[msg.transferId]; if (b.receivedCount >= b.totalChunks) assembleAndDownloadFile(msg.transferId); } break;
+            case 'file-meta': appState.fileReceiveBuffers[msg.transferId] = { meta: msg, chunks: {}, totalChunks: msg.totalChunks, receivedCount: 0 }; const cii = appState.peerInfo[peerId] || {}; addFileBubble(msg.transferId, msg.fileName, msg.fileSize, 'receive', cii.nickname, cii.color, peerId); const e = _earlyChunks[msg.transferId]; if (e) { const b = appState.fileReceiveBuffers[msg.transferId]; for (const c of e) { b.chunks[c.chunkIndex] = c.chunkData; b.receivedCount++; } updateFileProgress(msg.transferId, b.receivedCount, b.totalChunks, false); delete _earlyChunks[msg.transferId]; if (b.receivedCount >= b.totalChunks) assembleAndDownloadFile(msg.transferId); } break;
             case 'file-complete': break;
         }
     }
@@ -584,9 +584,10 @@
     msgInputArea.addEventListener('drop', e => { e.preventDefault(); msgInputArea.classList.remove('drag-over'); if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files); });
     fileInput.addEventListener('change', () => { if (fileInput.files.length) { handleFiles(fileInput.files); fileInput.value = ''; } });
     function handleFiles(list) { for (const f of list) sendFile(f); }
-    function addFileBubble(tid, fileName, fileSize, direction, senderName, senderColor) {
+    function addFileBubble(tid, fileName, fileSize, direction, senderName, senderColor, peerId) {
         const ce = document.getElementById('chatEmpty') || window._chatEmptyRef; if (ce && ce.id === 'chatEmpty') ce.classList.add('hidden');
         const b = document.createElement('div'); const isMine = direction === 'send'; b.className = 'chat-bubble ' + (isMine ? 'mine' : 'others'); b.id = 'file-bubble-' + tid;
+        if (peerId) b.dataset.peerId = peerId;
         const timeStr = formatMsgTime(Date.now());
         let inner = '';
         if (senderName) inner += '<div class="chat-sender" style="color:' + (senderColor || '#999') + '">👤 ' + escapeHtml(senderName) + ' <span class="chat-time">' + timeStr + '</span></div>';
@@ -602,7 +603,7 @@
         if (file.size > MAX_SIZE) { addSystemMessage('❌ 文件 "' + file.name + '" 超过 9MB 限制，无法发送'); return; }
         const tid = 'ft-' + Date.now() + '-' + Math.random().toString(36).substring(2,6); const total = Math.ceil(file.size / CHUNK_SIZE);
         sendWS({ type: 'file-meta', transferId: tid, fileName: file.name, fileSize: file.size, fileType: file.type || 'application/octet-stream', totalChunks: total, senderId: appState.selfId });
-        addFileBubble(tid, file.name, file.size, 'send', appState.nickname, appState.myColor);
+        addFileBubble(tid, file.name, file.size, 'send', appState.nickname, '#fff', appState.selfId);
         // 发送方也显示下载按钮
         setTimeout(() => {
             const senderBubble = document.getElementById('file-bubble-' + tid);
