@@ -166,7 +166,7 @@
         <div class="room-top-bar" id="roomTopBar">
             <span style="display:flex;align-items:center;gap:6px;">
                 <span class="conn-dot" id="connDot" title="连接状态"></span>
-                <span style="font-weight:700;font-size:14px;color:var(--text);" id="myNicknameLabel"></span>
+                <span style="font-weight:700;font-size:14px;color:var(--text);cursor:pointer;" id="myNicknameLabel" title="点击修改昵称"></span>
             </span>
             <span class="timer-badge" id="timerBadge">⏳ --:--:--</span>
             <span class="online-badge"><span class="online-dot"></span> <span id="onlineCount">0</span> 人在线</span>
@@ -182,7 +182,6 @@
         </div>
         <div class="room-bottom-bar mt-12" id="roomBottomBar">
             <span class="room-code-badge" id="roomCodeBadge" title="点击复制房间码">----</span>
-            <button class="btn btn-danger btn-sm hidden" id="btnDestroyRoom">💣 销毁房间</button>
             <button class="btn btn-exit btn-sm hidden" id="btnExitRoom">🚪 退出房间</button>
             <span class="room-code-badge" id="btnShortcutHelp" title="快捷键">Hotkeys</span>
             <div class="shortcut-popup hidden" id="shortcutPopup">
@@ -233,7 +232,6 @@
 <script>
 (function() {
     const CHARSET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-    const STUN_SERVERS = { iceServers: [{ urls: ['stun:stun.l.google.com:19302'] }] };
     const CHUNK_SIZE = 16384;
 
     const WS_URL = (location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host;
@@ -249,17 +247,17 @@
     const roomCodeBadge = $('#roomCodeBadge'), timerBadge = $('#timerBadge'), onlineCountEl = $('#onlineCount'), connDot = $('#connDot'), myNicknameLabel = $('#myNicknameLabel');
     const chatArea = $('#chatArea'), chatEmpty = $('#chatEmpty'), msgInput = $('#msgInput'), btnSendMsg = $('#btnSendMsg');
     const msgInputArea = $('#msgInputArea'), btnFileSelect = $('#btnFileSelect'), fileInput = $('#fileInput');
-    const btnDestroyRoom = $('#btnDestroyRoom'), btnExitRoom = $('#btnExitRoom'), btnShortcutHelp = $('#btnShortcutHelp'), shortcutPopup = $('#shortcutPopup');
+    const btnExitRoom = $('#btnExitRoom'), btnShortcutHelp = $('#btnShortcutHelp'), shortcutPopup = $('#shortcutPopup');
     const modalDestroyConfirm = $('#modalDestroyConfirm'), btnCancelDestroy = $('#btnCancelDestroy'), btnConfirmDestroy = $('#btnConfirmDestroy');
     const modalDestroyed = $('#modalDestroyed'), btnBackHomeAfterDestroy = $('#btnBackHomeAfterDestroy');
     const modalNickname = $('#modalNickname'), nicknameInput = $('#nicknameInput'), nicknameSuggestions = $('#nicknameSuggestions'), btnConfirmNickname = $('#btnConfirmNickname'), nicknameContext = $('#nicknameContext');
     const modalJoining = $('#modalJoining');
 
     let appState = {
-        view: 'home', isHost: false, roomCode: null, selfId: null, destroyHours: 1,
-        destroyTimestamp: null, timerInterval: null, peerConnections: {}, dataChannels: {},
+        view: 'home', roomCode: null, selfId: null, destroyHours: 1,
+        destroyTimestamp: null, timerInterval: null,
         fileReceiveBuffers: {}, destroyed: false, nickname: null, myColor: null, peerInfo: {},
-        _pending: null, _ws: null, _reconnectTimers: {},
+        _pending: null, _ws: null, _serverOnlineCount: null,
     };
 
     function generateRoomCode() { let c=''; for(let i=0;i<4;i++)c+=CHARSET[Math.floor(Math.random()*CHARSET.length)]; return c; }
@@ -270,8 +268,8 @@
     function generateRandomNickname() { return RANDOM_NICKNAMES[Math.floor(Math.random()*RANDOM_NICKNAMES.length)]; }
     function escapeHtml(s) { const d=document.createElement('div');d.textContent=s;return d.innerHTML.replace(/\n/g,'<br>'); }
     function sleep(ms) { return new Promise(r=>setTimeout(r,ms)); }
-    function getOnlineCount() { return Object.values(appState.dataChannels).filter(dc => dc.readyState === 'open').length + 1; }
-    function handleMemberUpdate(msg) { updateOnlineCount(); }
+    function getOnlineCount() { return appState._serverOnlineCount || 1; }
+    function handleMemberUpdate(msg) { appState._serverOnlineCount = msg.count || 1; updateOnlineCount(); }
     function sendWS(msg) { if(appState._ws&&appState._ws.readyState===1)appState._ws.send(JSON.stringify(msg)); }
 
     function showView(name) {
@@ -288,7 +286,7 @@
     function updateTimeChipUI(){$$('.time-chip').forEach(c=>c.classList.toggle('selected',parseInt(c.dataset.hours)===appState.destroyHours));}
 
     // ==================== WebSocket ====================
-    function connectWS(roomCode, isHost, destroyTimestamp) {
+    function connectWS(roomCode, destroyTimestamp) {
         if (appState._ws) { appState._ws.close(); appState._ws = null; }
         return new Promise((resolve, reject) => {
             const ws = new WebSocket(WS_URL);
@@ -297,7 +295,7 @@
                 ws.send(JSON.stringify({
                     type: 'register', roomCode, peerId: appState.selfId || generatePeerId(),
                     nickname: appState.nickname || '...', color: appState.myColor || '#999',
-                    isHost, destroyTimestamp,
+                    destroyTimestamp,
                 }));
             });
             ws.addEventListener('message', (e) => {
@@ -307,7 +305,7 @@
                     appState.roomCode = roomCode;
                     if (msg.destroyTimestamp) appState.destroyTimestamp = msg.destroyTimestamp;
                     ws.addEventListener('message', handleWSMessage);
-                    resolve(ws);
+                    resolve(msg);
                 } else if (msg.type === 'error') {
                     ws.close();
                     reject(new Error(msg.text || '服务器错误'));
@@ -323,9 +321,10 @@
         const roomCode = generateRoomCode();
         const selfId = generatePeerId();
         const destroyTimestamp = Date.now() + appState.destroyHours * 3600 * 1000;
-        appState._pending = { mode: 'create', roomCode, selfId, destroyTimestamp };
-        nicknameInput.value = generateRandomNickname();
+        appState._pending = { roomCode, selfId, destroyTimestamp };
+        try { const savedNick = localStorage.getItem('flash9_nickname'); if (savedNick) nicknameInput.value = savedNick; else nicknameInput.value = generateRandomNickname(); } catch(e) { nicknameInput.value = generateRandomNickname(); }
         nicknameContext.textContent = '选个昵称，让房间里的人识别你，或自定义：';
+        btnConfirmNickname.textContent = '✨ 进入房间';
         renderNicknameSuggestions();
         modalNickname.classList.remove('hidden');
         setTimeout(() => nicknameInput.focus(), 100);
@@ -343,11 +342,12 @@
             return;
         }
         const roomCode = raw;
-        let mode = 'join', selfId = generatePeerId(), destroyTimestamp = null;
-        try { const saved = JSON.parse(localStorage.getItem('flash9_host')); if (saved && saved.roomCode === roomCode && Date.now() < saved.destroyTimestamp) { mode = 'rejoin'; selfId = saved.peerId; destroyTimestamp = saved.destroyTimestamp; } } catch(e) {}
-        appState._pending = { mode, roomCode, selfId, destroyTimestamp };
-        nicknameInput.value = generateRandomNickname();
+        const selfId = generatePeerId();
+        appState._pending = { roomCode, selfId, destroyTimestamp: null };
+        // 记住旧昵称
+        try { const savedNick = localStorage.getItem('flash9_nickname'); if (savedNick) nicknameInput.value = savedNick; else nicknameInput.value = generateRandomNickname(); } catch(e) { nicknameInput.value = generateRandomNickname(); }
         nicknameContext.textContent = '选个昵称，让房间里的人识别你，或自定义：';
+        btnConfirmNickname.textContent = '✨ 进入房间';
         renderNicknameSuggestions();
         modalNickname.classList.remove('hidden');
         setTimeout(() => nicknameInput.focus(), 100);
@@ -365,55 +365,57 @@
     btnConfirmNickname.addEventListener('click', () => confirmNickname());
     nicknameInput.addEventListener('keydown', e => { if (e.key === 'Enter') confirmNickname(); });
     modalNickname.addEventListener('click', e => { if (e.target === modalNickname) { modalNickname.classList.add('hidden'); } });
+    // 点击昵称可修改
+    myNicknameLabel.addEventListener('click', () => {
+        if (appState.view !== 'room') return;
+        nicknameInput.value = appState.nickname || '';
+        nicknameContext.textContent = '修改你的昵称，点击确认后广播给所有人：';
+        renderNicknameSuggestions();
+        btnConfirmNickname.textContent = '✅ 确认修改';
+        modalNickname.classList.remove('hidden');
+        setTimeout(() => nicknameInput.focus(), 100);
+    });
 
     async function confirmNickname() {
-        appState.nickname = nicknameInput.value.trim() || generateRandomNickname();
-        appState.myColor = assignColor();
+        const nick = nicknameInput.value.trim() || generateRandomNickname();
+        appState.nickname = nick;
+        if (appState.view !== 'room') appState.myColor = assignColor();
         modalNickname.classList.add('hidden');
+        try { localStorage.setItem('flash9_nickname', nick); } catch(e) {}
+        // 已在房间中：仅修改昵称并广播
+        if (appState.view === 'room') {
+            myNicknameLabel.textContent = nick;
+            myNicknameLabel.style.color = appState.myColor || '#999';
+            sendWS({ type: 'peer-info', peerId: appState.selfId, nickname: nick, color: appState.myColor });
+            return;
+        }
         const p = appState._pending;
         appState._pending = null;
         if (!p) return;
-        // 显示等待弹窗，等旧连接彻底释放
         modalJoining.classList.remove('hidden');
         await sleep(1500);
         modalJoining.classList.add('hidden');
         appState.selfId = p.selfId;
+        let regMsg;
         try {
-            await connectWS(p.roomCode, p.mode === 'create' || p.mode === 'rejoin', p.destroyTimestamp);
+            regMsg = await connectWS(p.roomCode, p.destroyTimestamp);
         } catch (err) {
             alert('连接失败: ' + err.message);
             return;
         }
         updateConnDot();
-        appState.isHost = (p.mode === 'create' || p.mode === 'rejoin');
-        appState.peerConnections = {}; appState.dataChannels = {};
         appState.destroyed = false; appState.fileReceiveBuffers = {}; appState.peerInfo = {};
-        appState._reconnectTimers = {};
-        if (p.mode === 'create' || p.mode === 'rejoin') {
-            openRoom();
-            if (p.mode === 'create') { try { localStorage.setItem('flash9_host', JSON.stringify({ roomCode: appState.roomCode, peerId: appState.selfId, destroyTimestamp: appState.destroyTimestamp })); } catch(e) {} }
-        } else {
-            openRoom();
-            addSystemMessage('🔗 已加入房间');
-            sendWS({ type: 'join-request', to: null, roomCode: appState.roomCode, nickname: appState.nickname, color: appState.myColor, timestamp: Date.now() });
-            appState._joinTimeout = setTimeout(() => {
-                if (Object.keys(appState.peerConnections).length === 0 && !appState.destroyed)
-                    addSystemMessage('⚠️ 未能连接到任何成员');
-            }, 8000);
-        }
+        // 填充已有成员信息
+        if (regMsg.members) { for (const m of regMsg.members) { appState.peerInfo[m.peerId] = { nickname: m.nickname, color: m.color }; } }
+        openRoom();
+        addSystemMessage('🔗 已加入房间');
+        addSystemMessage('📢 请关注顶部房间自毁倒计时');
+        updateOnlineCount();
     }
 
     function openRoom() {
         showView('room'); updateRoomUI(); startTimer();
-        if (appState.isHost) {
-            addSystemMessage('🏠 房间已创建，自毁倒计时开始');
-            addSystemMessage('⏰ 将在 ' + appState.destroyHours + ' 小时后自动销毁');
-            btnDestroyRoom.classList.remove('hidden');
-            btnExitRoom.classList.add('hidden');
-        } else {
-            btnDestroyRoom.classList.add('hidden');
-            btnExitRoom.classList.remove('hidden');
-        }
+        btnExitRoom.classList.remove('hidden');
     }
 
     function shakeInput(el) { el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake'); }
@@ -470,138 +472,14 @@
         if (!msg || !msg.type) { console.log('[Flash9] 收到无type消息:', event.data); return; }
         if (msg.from === appState.selfId) return;
         switch (msg.type) {
-            case 'join-request': handleJoinRequest(msg); break;
-            case 'offer': handleOffer(msg); break;
-            case 'answer': handleAnswer(msg); break;
-            case 'ice-candidate': handleIceCandidate(msg); break;
-            case 'room-destroyed': handleRoomDestroyedNotify(msg); break;
-            case 'mesh-introduce': handleMeshIntroduce(msg); break;
-            case 'mesh-offer': handleMeshOffer(msg); break;
-            case 'mesh-answer': handleMeshAnswer(msg); break;
-            case 'reconnect-request': handleReconnectRequest(msg); break;
-            case 'peer-leave': handlePeerLeave(msg); break;
-            case 'member-update': handleMemberUpdate(msg); break;
+            case 'peer-joined': appState.peerInfo[msg.peerId] = { nickname: msg.nickname, color: msg.color }; updateOnlineCount(); break;
+            case 'room-destroyed': if (!appState.destroyed) { appState.destroyed = true; addSystemMessage('💥 房间已被销毁'); setTimeout(() => showDestroyedModal(), 800); cleanupAll(); } break;
+            case 'member-update': appState._serverOnlineCount = msg.count || 1; updateOnlineCount(); break;
             default: handleStructuredMessage(msg, msg.from); break;
         }
     }
 
-    async function handleJoinRequest(msg) {
-        if (appState.destroyed) return;
-        const peerId = msg.from;
-        // 如果仍有残留连接，先彻底清掉
-        if (appState.peerConnections[peerId]) { cleanupPeer(peerId); await sleep(100); }
-        if (appState._reconnectTimers[peerId]) { clearTimeout(appState._reconnectTimers[peerId]); delete appState._reconnectTimers[peerId]; }
-        if (appState._reconnectTimers[peerId + '_timeout']) { clearTimeout(appState._reconnectTimers[peerId + '_timeout']); delete appState._reconnectTimers[peerId + '_timeout']; }
-        const peerNickname = msg.nickname || '匿名', peerColor = msg.color || '#999';
-        addSystemMessage('👤 ' + peerNickname + ' 加入了房间');
-        appState.peerInfo[peerId] = { nickname: peerNickname, color: peerColor }; updateOnlineCount();
-        let pc; try { pc = new RTCPeerConnection(STUN_SERVERS); } catch (err) { addSystemMessage('⚠️ 浏览器不支持 WebRTC'); return; }
-        appState.peerConnections[peerId] = pc;
-        const dc = pc.createDataChannel('flash9-chat', { ordered: true }); setupDataChannel(dc, peerId, true); appState.dataChannels[peerId] = dc;
-        pc.onicecandidate = (event) => { if (event.candidate) { const c = event.candidate; sendWS({ type: 'ice-candidate', to: peerId, roomCode: appState.roomCode, candidate: { candidate: c.candidate, sdpMid: c.sdpMid, sdpMLineIndex: c.sdpMLineIndex } }); } };
-        pc.oniceconnectionstatechange = () => {};
-        try {
-            const offer = await pc.createOffer(); await pc.setLocalDescription(offer);
-            sendWS({ type: 'offer', to: peerId, roomCode: appState.roomCode, sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp }, hostNickname: appState.nickname, hostColor: appState.myColor });
-            for (const [existingId, existingDC] of Object.entries(appState.dataChannels)) {
-                if (existingId === peerId || existingDC.readyState !== 'open') continue;
-                sendWS({ type: 'mesh-introduce', to: existingId, roomCode: appState.roomCode, newPeerId: peerId, nickname: peerNickname, color: peerColor });
-            }
-        } catch (err) { addSystemMessage('⚠️ 连接失败: ' + (err.message || '未知错误')); cleanupPeer(peerId); }
-    }
 
-    async function handleOffer(msg) {
-        if (appState.destroyed || msg.to !== appState.selfId) return;
-        const peerId = msg.from;
-        if (appState.peerConnections[peerId]) { cleanupPeer(peerId); await sleep(100); }
-        if (appState._joinTimeout) { clearTimeout(appState._joinTimeout); appState._joinTimeout = null; }
-        appState.peerInfo[peerId] = { nickname: msg.hostNickname || '成员', color: msg.hostColor || '#58CC02' };
-        let pc; try { pc = new RTCPeerConnection(STUN_SERVERS); } catch (err) { addSystemMessage('⚠️ 浏览器不支持 WebRTC'); return; }
-        appState.peerConnections[peerId] = pc;
-        pc.onicecandidate = (event) => { if (event.candidate) { const c = event.candidate; sendWS({ type: 'ice-candidate', to: peerId, roomCode: appState.roomCode, candidate: { candidate: c.candidate, sdpMid: c.sdpMid, sdpMLineIndex: c.sdpMLineIndex } }); } };
-        pc.ondatachannel = (event) => { setupDataChannel(event.channel, peerId, false); appState.dataChannels[peerId] = event.channel; addSystemMessage('✅ 已连接到 ' + (msg.hostNickname || '成员')); updateOnlineCount(); };
-        pc.oniceconnectionstatechange = () => {};
-        try {
-            await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp)); const answer = await pc.createAnswer(); await pc.setLocalDescription(answer);
-            sendWS({ type: 'answer', to: peerId, roomCode: appState.roomCode, sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } });
-        } catch (err) { addSystemMessage('⚠️ 连接失败: ' + (err.message || '未知错误')); cleanupPeer(peerId); }
-    }
-
-    async function handleAnswer(msg) {
-        if (msg.to !== appState.selfId) return; const peerId = msg.from; const pc = appState.peerConnections[peerId]; if (!pc) return;
-        const wasReconnecting = !!(appState._reconnectTimers[peerId] || appState._reconnectTimers[peerId + '_timeout']);
-        if (appState._reconnectTimers[peerId]) { clearTimeout(appState._reconnectTimers[peerId]); delete appState._reconnectTimers[peerId]; }
-        if (appState._reconnectTimers[peerId + '_timeout']) { clearTimeout(appState._reconnectTimers[peerId + '_timeout']); delete appState._reconnectTimers[peerId + '_timeout']; }
-        try { await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp)); if (wasReconnecting) addSystemMessage('✅ 重连成功'); } catch (err) {}
-    }
-    function handleIceCandidate(msg) { const pc = appState.peerConnections[msg.from]; if (!pc) return; try { pc.addIceCandidate(new RTCIceCandidate(msg.candidate)); } catch (err) {} }
-    function handleRoomDestroyedNotify(msg) { if (appState.destroyed) return; appState.destroyed = true; addSystemMessage('💥 房间已被房主销毁'); setTimeout(() => showDestroyedModal(), 800); cleanupAll(); }
-
-    function handlePeerLeave(msg) {
-        if (appState.destroyed) return;
-        const peerId = msg.from;
-        const info = appState.peerInfo[peerId];
-        addSystemMessage('🚪 ' + (info ? info.nickname : '一位成员') + ' 退出了房间');
-        if (appState._reconnectTimers[peerId]) { clearTimeout(appState._reconnectTimers[peerId]); delete appState._reconnectTimers[peerId]; }
-        if (appState._reconnectTimers[peerId + '_timeout']) { clearTimeout(appState._reconnectTimers[peerId + '_timeout']); delete appState._reconnectTimers[peerId + '_timeout']; }
-        // 直接清理，置空 onclose 防止触发重连
-        delete appState.peerInfo[peerId];
-        const dc = appState.dataChannels[peerId]; if (dc) { dc.onclose = null; dc.close(); }
-        const pc = appState.peerConnections[peerId]; if (pc) pc.close();
-        delete appState.dataChannels[peerId];
-        delete appState.peerConnections[peerId];
-        updateOnlineCount();
-    }
-    function handleReconnectRequest(msg) {
-        if (appState.destroyed || msg.to !== appState.selfId) return;
-        const peerId = msg.from;
-        if (appState._reconnectTimers[peerId]) { clearTimeout(appState._reconnectTimers[peerId]); delete appState._reconnectTimers[peerId]; }
-        if (appState._reconnectTimers[peerId + '_timeout']) { clearTimeout(appState._reconnectTimers[peerId + '_timeout']); delete appState._reconnectTimers[peerId + '_timeout']; }
-        closePeerConnection(peerId);
-    }
-
-    async function handleMeshIntroduce(msg) {
-        if (appState.destroyed || msg.to !== appState.selfId) return;
-        const peerId = msg.newPeerId;
-        if (appState.peerConnections[peerId]) { cleanupPeer(peerId); await sleep(100); }
-        appState.peerInfo[peerId] = { nickname: msg.nickname || '匿名', color: msg.color || '#999' }; updateOnlineCount();
-        const pc = new RTCPeerConnection(STUN_SERVERS); appState.peerConnections[peerId] = pc;
-        const dc = pc.createDataChannel('flash9-chat', { ordered: true }); setupDataChannel(dc, peerId, false); appState.dataChannels[peerId] = dc;
-        pc.onicecandidate = (event) => { if (event.candidate) { const c = event.candidate; sendWS({ type: 'ice-candidate', to: peerId, roomCode: appState.roomCode, candidate: { candidate: c.candidate, sdpMid: c.sdpMid, sdpMLineIndex: c.sdpMLineIndex } }); } };
-        pc.oniceconnectionstatechange = () => {};
-        try { const offer = await pc.createOffer(); await pc.setLocalDescription(offer); sendWS({ type: 'mesh-offer', to: peerId, roomCode: appState.roomCode, sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp }, nickname: appState.nickname, color: appState.myColor }); } catch (err) { cleanupPeer(peerId); }
-    }
-    async function handleMeshOffer(msg) {
-        if (appState.destroyed || msg.to !== appState.selfId) return;
-        const peerId = msg.from;
-        if (appState.peerConnections[peerId]) { cleanupPeer(peerId); await sleep(100); }
-        appState.peerInfo[peerId] = { nickname: msg.nickname || '成员', color: msg.color || '#999' }; updateOnlineCount();
-        const pc = new RTCPeerConnection(STUN_SERVERS); appState.peerConnections[peerId] = pc;
-        pc.onicecandidate = (event) => { if (event.candidate) { const c = event.candidate; sendWS({ type: 'ice-candidate', to: peerId, roomCode: appState.roomCode, candidate: { candidate: c.candidate, sdpMid: c.sdpMid, sdpMLineIndex: c.sdpMLineIndex } }); } };
-        pc.ondatachannel = (event) => { setupDataChannel(event.channel, peerId, false); appState.dataChannels[peerId] = event.channel; updateOnlineCount(); };
-        pc.oniceconnectionstatechange = () => {};
-        try { await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp)); const answer = await pc.createAnswer(); await pc.setLocalDescription(answer); sendWS({ type: 'mesh-answer', to: peerId, roomCode: appState.roomCode, sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } }); } catch (err) { cleanupPeer(peerId); }
-    }
-    async function handleMeshAnswer(msg) {
-        if (msg.to !== appState.selfId) return; const pc = appState.peerConnections[msg.from]; if (!pc) return;
-        try { await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp)); } catch (err) {}
-    }
-
-    // ==================== DataChannel ====================
-    function setupDataChannel(dc, peerId, isHostSide) {
-        dc.onopen = () => { updateOnlineCount(); if (dc.readyState === 'open') { setTimeout(() => { if (dc.readyState === 'open') dc.send(JSON.stringify({ type: 'peer-info', peerId: appState.selfId, nickname: appState.nickname, color: appState.myColor, timestamp: Date.now() })); }, 200); } };
-        dc.onmessage = (event) => handleDataChannelMessage(event.data, peerId);
-        dc.onclose = () => {
-            if (!appState.destroyed) {
-                const info = appState.peerInfo[peerId];
-                if (!info) { closePeerConnection(peerId); updateOnlineCount(); return; }
-                const name = info.nickname;
-                closePeerConnection(peerId); addSystemMessage('⚠️ ' + name + ' 断开，尝试重连...'); startReconnect(peerId, 1);
-            }
-            else cleanupPeer(peerId);
-        };
-        dc.onerror = () => {};
-    }
     const _earlyChunks = {};
     function handleWSChunk(arrayBuffer) {
         const view = new DataView(arrayBuffer); const idLen = view.getUint32(0, false);
@@ -618,30 +496,17 @@
         updateFileProgress(transferId, buf.receivedCount, buf.totalChunks, false);
         if (buf.receivedCount >= buf.totalChunks) assembleAndDownloadFile(transferId);
     }
-    function handleDataChannelMessage(data, peerId) {
-        if (typeof data === 'string') { try { handleStructuredMessage(JSON.parse(data), peerId); } catch (e) { const info = appState.peerInfo[peerId] || {}; addChatBubble(data, 'others', info.nickname, info.color, Date.now()); } }
-        else if (data instanceof ArrayBuffer) handleFileChunk(data, peerId);
-        else if (data instanceof Blob) data.arrayBuffer().then(buf => handleFileChunk(buf, peerId));
-    }
     function handleStructuredMessage(msg, peerId) {
         switch (msg.type) {
             case 'system': addSystemMessage(msg.text, msg.timestamp); break;
             case 'chat': const ci = appState.peerInfo[peerId] || {}; addChatBubble(msg.text, 'others', ci.nickname, ci.color, msg.timestamp); break;
-            case 'peer-info': if (!appState.peerInfo[msg.peerId]) { appState.peerInfo[msg.peerId] = { nickname: msg.nickname, color: msg.color }; updateOnlineCount(); } break;
+            case 'peer-info': appState.peerInfo[msg.peerId] = { nickname: msg.nickname, color: msg.color }; updateOnlineCount(); break;
             case 'file-meta': appState.fileReceiveBuffers[msg.transferId] = { meta: msg, chunks: {}, totalChunks: msg.totalChunks, receivedCount: 0 }; const cii = appState.peerInfo[peerId] || {}; addFileBubble(msg.transferId, msg.fileName, msg.fileSize, 'receive', cii.nickname, cii.color); const e = _earlyChunks[msg.transferId]; if (e) { const b = appState.fileReceiveBuffers[msg.transferId]; for (const c of e) { b.chunks[c.chunkIndex] = c.chunkData; b.receivedCount++; } updateFileProgress(msg.transferId, b.receivedCount, b.totalChunks, false); delete _earlyChunks[msg.transferId]; if (b.receivedCount >= b.totalChunks) assembleAndDownloadFile(msg.transferId); } break;
             case 'file-complete': break;
         }
     }
 
     // ==================== 文件传输 ====================
-    function handleFileChunk(arrayBuffer, peerId) {
-        const view = new DataView(arrayBuffer); const idLen = view.getUint32(0, false);
-        const idBytes = new Uint8Array(arrayBuffer, 4, idLen); const transferId = new TextDecoder().decode(idBytes);
-        const chunkIndex = view.getUint32(4 + idLen, false); const chunkData = new Uint8Array(arrayBuffer, 8 + idLen);
-        const buf = appState.fileReceiveBuffers[transferId]; if (!buf) return;
-        buf.chunks[chunkIndex] = chunkData; buf.receivedCount++;
-        if (buf.receivedCount >= buf.totalChunks) assembleAndDownloadFile(transferId);
-    }
     function assembleAndDownloadFile(transferId) {
         const buf = appState.fileReceiveBuffers[transferId]; if (!buf || buf._completed) return;
         buf._completed = true; showDownloadButton(transferId);
@@ -759,35 +624,23 @@
         }
     });
 
-    // ==================== 房间销毁 ====================
-    function destroyRoom(isAuto) { if (appState.destroyed) return; appState.destroyed = true; addSystemMessage(isAuto ? '⏰ 自毁时间到，房间自动销毁' : '💣 房间已被手动销毁'); sendWS({ type: 'room-destroyed', roomCode: appState.roomCode }); try { localStorage.removeItem('flash9_host'); } catch(e) {} setTimeout(() => showDestroyedModal(), 600); cleanupAll(); }
+    // ==================== 房间退出与销毁 ====================
+    function destroyRoom(isAuto) { if (appState.destroyed) return; appState.destroyed = true; addSystemMessage(isAuto ? '⏰ 自毁时间到，房间自动销毁' : '💥 房间已销毁'); sendWS({ type: 'room-destroyed', roomCode: appState.roomCode }); setTimeout(() => showDestroyedModal(), 600); cleanupAll(); }
     function showDestroyedModal() { modalDestroyConfirm.classList.add('hidden'); modalDestroyed.classList.remove('hidden'); }
-    btnDestroyRoom.addEventListener('click', () => {
-        if (!appState.isHost || appState.destroyed) return;
-        $('#modalConfirmTitle').textContent = '确定要销毁房间吗？';
-        $('#modalConfirmText').innerHTML = '所有消息和文件将立即消失，<br>无法恢复。所有人将被踢出。';
-        btnConfirmDestroy.textContent = '确认销毁';
-        btnConfirmDestroy.className = 'btn btn-danger btn-sm';
-        btnConfirmDestroy.onclick = () => { modalDestroyConfirm.classList.add('hidden'); destroyRoom(false); };
-        modalDestroyConfirm.classList.remove('hidden');
-    });
-    btnCancelDestroy.addEventListener('click', () => modalDestroyConfirm.classList.add('hidden'));
     btnBackHomeAfterDestroy.addEventListener('click', () => { modalDestroyed.classList.add('hidden'); resetAll(); showView('home'); });
     btnExitRoom.addEventListener('click', () => {
         $('#modalConfirmTitle').textContent = '确定要退出房间吗？';
         $('#modalConfirmText').innerHTML = '你将从房间中退出，<br>其他成员会收到通知。';
         btnConfirmDestroy.textContent = '退出';
-        btnConfirmDestroy.onclick = () => { modalDestroyConfirm.classList.add('hidden'); sendWS({ type: 'peer-leave', roomCode: appState.roomCode }); addSystemMessage('🚪 你退出了房间'); setTimeout(() => { resetAll(); showView('home'); }, 300); };
+        btnConfirmDestroy.className = 'btn btn-exit btn-sm';
+        btnConfirmDestroy.onclick = () => { modalDestroyConfirm.classList.add('hidden'); addSystemMessage('🚪 你退出了房间'); setTimeout(() => { resetAll(); showView('home'); }, 300); };
         modalDestroyConfirm.classList.remove('hidden');
     });
+    btnCancelDestroy.addEventListener('click', () => modalDestroyConfirm.classList.add('hidden'));
 
     // ==================== 清理 ====================
-    function closePeerConnection(peerId) { const pc = appState.peerConnections[peerId]; if (pc) { pc.close(); delete appState.peerConnections[peerId]; } const dc = appState.dataChannels[peerId]; if (dc) { dc.close(); delete appState.dataChannels[peerId]; } updateOnlineCount(); }
-    function cleanupPeer(peerId) { closePeerConnection(peerId); delete appState.peerInfo[peerId]; delete appState._reconnectTimers[peerId]; updateOnlineCount(); }
-    function startReconnect(peerId, attempt) { if (appState.destroyed || appState._reconnectTimers[peerId]) return; const delay = Math.min(1000 * Math.pow(2, attempt - 1), 30000); const info = appState.peerInfo[peerId]; if (!info) { cleanupPeer(peerId); return; } appState._reconnectTimers[peerId] = setTimeout(() => { delete appState._reconnectTimers[peerId]; if (appState.destroyed) { cleanupPeer(peerId); return; } sendWS({ type: 'reconnect-request', to: peerId, roomCode: appState.roomCode, nickname: appState.nickname, color: appState.myColor }); doReconnect(peerId, info.nickname, info.color); const timeout = setTimeout(() => { startReconnect(peerId, attempt + 1); }, 5000); appState._reconnectTimers[peerId + '_timeout'] = timeout; }, delay); }
-    async function doReconnect(peerId, peerNickname, peerColor) { if (appState.peerConnections[peerId]) return; const pc = new RTCPeerConnection(STUN_SERVERS); appState.peerConnections[peerId] = pc; const dc = pc.createDataChannel('flash9-chat', { ordered: true }); setupDataChannel(dc, peerId, true); appState.dataChannels[peerId] = dc; pc.onicecandidate = (event) => { if (event.candidate) { const c = event.candidate; sendWS({ type: 'ice-candidate', to: peerId, roomCode: appState.roomCode, candidate: { candidate: c.candidate, sdpMid: c.sdpMid, sdpMLineIndex: c.sdpMLineIndex } }); } }; pc.oniceconnectionstatechange = () => {}; try { const offer = await pc.createOffer(); await pc.setLocalDescription(offer); sendWS({ type: 'offer', to: peerId, roomCode: appState.roomCode, sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp }, hostNickname: appState.nickname, hostColor: appState.myColor }); } catch (err) { cleanupPeer(peerId); } }
-    function cleanupAll() { if (appState.timerInterval) { clearInterval(appState.timerInterval); appState.timerInterval = null; } for (const pid of Object.keys(appState.peerConnections)) cleanupPeer(pid); if (appState._ws) { appState._ws.close(); appState._ws = null; } updateConnDot(); appState.fileReceiveBuffers = {}; for (const k in _earlyChunks) delete _earlyChunks[k]; chatArea.innerHTML = '<div class="chat-empty" id="chatEmpty">📭 还没人说话，发条消息吧~</div>'; window._chatEmptyRef = chatArea.querySelector('.chat-empty'); btnDestroyRoom.classList.add('hidden'); btnExitRoom.classList.add('hidden'); onlineCountEl.textContent = '0'; }
-    function resetAll() { cleanupAll(); appState.isHost = false; appState.roomCode = null; appState.selfId = null; appState.destroyTimestamp = null; appState.destroyHours = 1; appState.peerConnections = {}; appState.dataChannels = {}; appState.destroyed = false; appState.fileReceiveBuffers = {}; appState.nickname = null; appState.myColor = null; appState.peerInfo = {}; appState._pending = null; appState._reconnectTimers = {}; appState._serverOnlineCount = null; if (appState._joinTimeout) { clearTimeout(appState._joinTimeout); appState._joinTimeout = null; } if (appState.timerInterval) { clearInterval(appState.timerInterval); appState.timerInterval = null; } modalDestroyed.classList.add('hidden'); modalDestroyConfirm.classList.add('hidden'); modalNickname.classList.add('hidden'); modalJoining.classList.add('hidden'); timerBadge.classList.remove('urgent'); timerBadge.textContent = '⏳ --:--:--'; roomCodeBadge.textContent = '----'; onlineCountEl.textContent = '0'; connDot.classList.add('disconnected'); myNicknameLabel.textContent = ''; chatArea.innerHTML = '<div class="chat-empty" id="chatEmpty">📭 还没人说话，发条消息吧~</div>'; window._chatEmptyRef = chatArea.querySelector('.chat-empty'); joinCodeInput.value = ''; joinCodeInput.placeholder = '输入 4 位房间码'; }
+    function cleanupAll() { if (appState.timerInterval) { clearInterval(appState.timerInterval); appState.timerInterval = null; } if (appState._ws) { appState._ws.close(); appState._ws = null; } updateConnDot(); appState.fileReceiveBuffers = {}; for (const k in _earlyChunks) delete _earlyChunks[k]; chatArea.innerHTML = '<div class="chat-empty" id="chatEmpty">📭 还没人说话，发条消息吧~</div>'; window._chatEmptyRef = chatArea.querySelector('.chat-empty'); btnExitRoom.classList.add('hidden'); onlineCountEl.textContent = '0'; }
+    function resetAll() { cleanupAll(); appState.roomCode = null; appState.selfId = null; appState.destroyTimestamp = null; appState.destroyHours = 1; appState.destroyed = false; appState.fileReceiveBuffers = {}; appState.nickname = null; appState.myColor = null; appState.peerInfo = {}; appState._pending = null; appState._serverOnlineCount = null; if (appState.timerInterval) { clearInterval(appState.timerInterval); appState.timerInterval = null; } modalDestroyed.classList.add('hidden'); modalDestroyConfirm.classList.add('hidden'); modalNickname.classList.add('hidden'); modalJoining.classList.add('hidden'); timerBadge.classList.remove('urgent'); timerBadge.textContent = '⏳ --:--:--'; roomCodeBadge.textContent = '----'; onlineCountEl.textContent = '0'; connDot.classList.add('disconnected'); myNicknameLabel.textContent = ''; chatArea.innerHTML = '<div class="chat-empty" id="chatEmpty">📭 还没人说话，发条消息吧~</div>'; window._chatEmptyRef = chatArea.querySelector('.chat-empty'); joinCodeInput.value = ''; joinCodeInput.placeholder = '输入 4 位房间码'; }
 
     // ==================== 快捷键 ====================
     document.addEventListener('keydown', (e) => {
